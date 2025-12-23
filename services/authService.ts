@@ -1,43 +1,143 @@
+// src/services/authService.ts
 
-import { API_BASE_URL } from '../constants';
+import { supabase } from './supabaseClient';
 
-export const login = async (email: string, password: string) => {
-  const response = await fetch(`${API_BASE_URL}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-
-  if (!response.ok) {
-    throw new Error('Invalid credentials');
-  }
-
-  const data = await response.json();
-  localStorage.setItem('token', data.access_token);
-  return data;
-};
-
+/**
+ * Register a new user with email and password
+ */
 export const register = async (email: string, password: string) => {
-  const response = await fetch(`${API_BASE_URL}/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
   });
 
-  if (!response.ok) {
-    throw new Error('Registration failed. Email might be taken.');
+  if (error) {
+    throw new Error(error.message);
   }
 
-  const data = await response.json();
-  localStorage.setItem('token', data.access_token);
+  // Note: Supabase may require email confirmation depending on your settings
+  // Check your Supabase dashboard under Authentication > Email Auth
   return data;
 };
 
-export const logout = () => {
-  localStorage.removeItem('token');
+/**
+ * Log in an existing user
+ */
+export const login = async (email: string, password: string) => {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+};
+
+/**
+ * Log out the current user
+ */
+export const logout = async () => {
+  const { error } = await supabase.auth.signOut();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  // Reload the page to clear any cached state
   window.location.reload();
 };
 
-export const getToken = () => localStorage.getItem('token');
+/**
+ * Get the current user's session
+ */
+export const getSession = async () => {
+  const { data: { session }, error } = await supabase.auth.getSession();
 
-export const isAuthenticated = () => !!localStorage.getItem('token');
+  if (error) {
+    console.error('Error getting session:', error);
+    return null;
+  }
+
+  return session;
+};
+
+/**
+ * Get the current user
+ */
+export const getCurrentUser = async () => {
+  const { data: { user }, error } = await supabase.auth.getUser();
+
+  if (error) {
+    console.error('Error getting user:', error);
+    return null;
+  }
+
+  return user;
+};
+
+/**
+ * Check if user is authenticated
+ */
+export const isAuthenticated = async (): Promise<boolean> => {
+  const session = await getSession();
+  return !!session;
+};
+
+/**
+ * Get the current user's ID
+ */
+export const getUserId = async (): Promise<string | null> => {
+  const user = await getCurrentUser();
+  return user?.id || null;
+};
+
+/**
+ * Listen for authentication state changes
+ * Usage: 
+ * const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+ *   console.log('Auth state changed:', event, session);
+ * });
+ */
+export const onAuthStateChange = (callback: (event: string, session: any) => void) => {
+  return supabase.auth.onAuthStateChange(callback);
+};
+
+/**
+ * Reset password for a user (sends email)
+ */
+export const resetPassword = async (email: string) => {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return { message: 'Password reset email sent!' };
+};
+
+/**
+ * Update user password (when they're already logged in)
+ */
+export const updatePassword = async (newPassword: string) => {
+  const { error } = await supabase.auth.updateUser({
+    password: newPassword,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return { message: 'Password updated successfully!' };
+};
+
+// Backward compatibility with old authService
+// This maintains the same API as before
+export const getToken = async () => {
+  const session = await getSession();
+  return session?.access_token || null;
+};
