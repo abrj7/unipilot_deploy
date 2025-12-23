@@ -5,8 +5,19 @@ import { DATA_UW, DATA_UOFT, DATA_MAC, DATA_WESTERN, DATA_QUEENS, DATA_TMU } fro
 import { USE_BACKEND } from '../constants';
 import { chatWithBackend, summarizeEventsBackend } from './apiService';
 
-// Initialize Gemini Client (Client Side)
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize Gemini Client (Client Side) - Lazy loaded to prevent crash if no API key
+let ai: GoogleGenAI | null = null;
+const getAI = () => {
+  if (!ai) {
+    const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.warn("No Gemini API key found. Client-side AI features will not work.");
+      return null;
+    }
+    ai = new GoogleGenAI({ apiKey });
+  }
+  return ai;
+};
 
 const getCampusDataForId = (id: string) => {
   switch (id) {
@@ -41,6 +52,11 @@ export const generateResponse = async (
   }
 
   // --- CLIENT SIDE MODE (DEMO) ---
+  const genAI = getAI();
+  if (!genAI) {
+    return { text: "No API key configured. Please set the GEMINI_API_KEY environment variable or enable backend mode." };
+  }
+
   const campusData = getCampusDataForId(universityId);
   const dataContext = JSON.stringify(campusData, null, 2);
 
@@ -73,7 +89,7 @@ export const generateResponse = async (
       parts: [{ text: msg.text }]
     }));
 
-    let response = await ai.models.generateContent({
+    let response = await genAI.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: [
         ...recentHistory,
@@ -112,7 +128,7 @@ export const generateResponse = async (
           toolResult = { result: `Found: ${location.name}` };
         }
 
-        response = await ai.models.generateContent({
+        response = await genAI.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: [
                 ...recentHistory,

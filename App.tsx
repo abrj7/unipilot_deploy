@@ -18,6 +18,7 @@ import { Send, GraduationCap, Info, Trash2, Trophy, Check, Star, MessageSquare, 
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
 const App: React.FC = () => {
+  console.log("App component is initializing...");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
