@@ -21,6 +21,13 @@ venv/
 *.local
 .env
 
+# Database
+*.db
+
+# Python cache
+__pycache__/
+backend/__pycache__/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
