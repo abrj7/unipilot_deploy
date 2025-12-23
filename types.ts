@@ -88,9 +88,11 @@ export interface Badge {
 }
 
 export interface UserStats {
-  points: number;
+  experience: number;
   level: number;
   badges: Badge[];
-  topicCounts: Record<string, number>; // e.g. { 'library': 5, 'food': 2 }
-  interactionsCount: number;
+  topicCounts?: Record<string, number>; // Legacy local storage format
+  topicsExplored?: string[]; // Supabase format
+  messagesCount: number;
+  nextLevelXP?: number;
 }

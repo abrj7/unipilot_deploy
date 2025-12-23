@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { UNIVERSITIES, DEFAULT_UNIVERSITY_ID, USE_BACKEND } from './constants';
+import { UNIVERSITIES, DEFAULT_UNIVERSITY_ID, USE_BACKEND, INITIAL_BADGES } from './constants';
 import { Message, Sender, UserStats, ChatSession } from './types';
 import { generateResponse } from './services/geminiService';
-import { getUserStats, processUserInteraction, generateUserContextSummary } from './services/userService';
+import { getUserStats, processUserInteraction, generateUserContextSummary } from './services/statsService'; // Updated import
+import { getChatSessions, createChatSession, addMessage, deleteChatSession } from './services/chatService'; // New import
 import { isAuthenticated, logout } from './services/authService';
 import { DATA_UW, DATA_UOFT, DATA_MAC, DATA_WESTERN, DATA_QUEENS, DATA_TMU } from './services/campusData';
 import UniversitySelector from './components/UniversitySelector';
@@ -20,22 +20,38 @@ const generateId = () => Math.random().toString(36).substring(2, 9);
 const App: React.FC = () => {
   console.log("App component is initializing...");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Initial stats state
+  const [userStats, setUserStats] = useState<UserStats>({
+    experience: 0,
+    level: 1,
+    badges: INITIAL_BADGES,
+    topicsExplored: [],
+    messagesCount: 0,
+    nextLevelXP: 100
+  });
 
   useEffect(() => {
-    if (USE_BACKEND) {
-      setIsLoggedIn(isAuthenticated());
-    } else {
-      setIsLoggedIn(true);
-    }
+    const checkAuth = async () => {
+      if (USE_BACKEND) {
+        const authenticated = await isAuthenticated();
+        setIsLoggedIn(authenticated);
+      } else {
+        setIsLoggedIn(true);
+      }
+      setAuthLoading(false);
+    };
+    checkAuth();
   }, []);
 
   const [selectedUniId, setSelectedUniId] = useState<string>(DEFAULT_UNIVERSITY_ID);
   const [activeTab, setActiveTab] = useState<'chat' | 'events' | 'multifaith'>('chat');
-  
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -43,123 +59,125 @@ const App: React.FC = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
-  
-  const [notification, setNotification] = useState<{text: string, type: 'success' | 'achievement'} | null>(null);
-  const [userStats, setUserStats] = useState<UserStats>(getUserStats());
+
+  const [notification, setNotification] = useState<{ text: string, type: 'success' | 'achievement' } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  
+
   const prevUniIdRef = useRef(selectedUniId);
   const currentUniversity = UNIVERSITIES.find(u => u.id === selectedUniId) || UNIVERSITIES[0];
 
   const getCampusData = (id: string) => {
-    switch(id) {
-        case 'uw': return DATA_UW;
-        case 'uoft': return DATA_UOFT;
-        case 'mac': return DATA_MAC;
-        case 'western': return DATA_WESTERN;
-        case 'queens': return DATA_QUEENS;
-        case 'tmu': return DATA_TMU;
-        default: return DATA_UW;
+    switch (id) {
+      case 'uw': return DATA_UW;
+      case 'uoft': return DATA_UOFT;
+      case 'mac': return DATA_MAC;
+      case 'western': return DATA_WESTERN;
+      case 'queens': return DATA_QUEENS;
+      case 'tmu': return DATA_TMU;
+      default: return DATA_UW;
     }
   };
 
   const currentCampusData = getCampusData(selectedUniId);
 
+  // Load basic data on login
   useEffect(() => {
-    const stored = localStorage.getItem('campus_chat_history_v2');
-    if (stored) {
-      try {
-        const parsed: ChatSession[] = JSON.parse(stored, (key, value) => {
-          if (key === 'timestamp' || key === 'lastModified') return key === 'timestamp' ? new Date(value) : value;
-          return value;
-        });
-        
-        const hydratedSessions = parsed.map(s => ({
+    if (isLoggedIn) {
+      const loadData = async () => {
+        try {
+          // Load Stats
+          const stats = await getUserStats();
+          setUserStats(stats);
+
+          // Load Sessions
+          const userSessions = await getChatSessions();
+
+          // Hydrate dates just in case, though service should handle it
+          const hydratedSessions = userSessions.map(s => ({
             ...s,
             messages: s.messages.map(m => ({
-                ...m,
-                timestamp: new Date(m.timestamp)
+              ...m,
+              timestamp: new Date(m.timestamp)
             }))
-        }));
+          }));
 
-        setSessions(hydratedSessions);
+          setSessions(hydratedSessions);
 
-        const currentUniSessions = hydratedSessions.filter(s => s.universityId === selectedUniId);
-        if (currentUniSessions.length > 0) {
+          // Select current university session if exists
+          const currentUniSessions = hydratedSessions.filter(s => s.universityId === selectedUniId);
+          if (currentUniSessions.length > 0) {
             const latest = currentUniSessions[0];
             setCurrentSessionId(latest.id);
             setMessages(latest.messages);
+          }
+        } catch (error) {
+          console.error("Error loading user data:", error);
         }
-      } catch (e) {
-        console.error("Failed to load history", e);
-      }
+      };
+      loadData();
     }
-  }, []);
+  }, [isLoggedIn]);
 
-  useEffect(() => {
-    if (sessions.length > 0) {
-        localStorage.setItem('campus_chat_history_v2', JSON.stringify(sessions));
-    } else {
-        localStorage.removeItem('campus_chat_history_v2');
-    }
-  }, [sessions]);
-
+  // Handle university change
   useEffect(() => {
     if (prevUniIdRef.current !== selectedUniId) {
-        prevUniIdRef.current = selectedUniId;
-        const uniSessions = sessions.filter(s => s.universityId === selectedUniId);
+      prevUniIdRef.current = selectedUniId;
+      const uniSessions = sessions.filter(s => s.universityId === selectedUniId);
 
-        if (uniSessions.length > 0) {
-            const latest = uniSessions[0];
-            setCurrentSessionId(latest.id);
-            setMessages(latest.messages);
-        } else {
-            setCurrentSessionId(null);
-            setMessages([{
-                id: generateId(),
-                text: currentUniversity.welcomeMessage,
-                sender: Sender.AI,
-                timestamp: new Date()
-            }]);
-        }
+      if (uniSessions.length > 0) {
+        const latest = uniSessions[0];
+        setCurrentSessionId(latest.id);
+        setMessages(latest.messages);
+      } else {
+        setCurrentSessionId(null);
+        setMessages([{
+          id: generateId(),
+          text: currentUniversity.welcomeMessage,
+          sender: Sender.AI,
+          timestamp: new Date()
+        }]);
+      }
     }
   }, [selectedUniId, sessions, currentUniversity]);
 
+  // Default welcome message if empty
   useEffect(() => {
     if (messages.length === 0 && !currentSessionId) {
-        setMessages([
-          {
-            id: generateId(),
-            text: currentUniversity.welcomeMessage,
-            sender: Sender.AI,
-            timestamp: new Date()
-          }
-        ]);
+      setMessages([
+        {
+          id: generateId(),
+          text: currentUniversity.welcomeMessage,
+          sender: Sender.AI,
+          timestamp: new Date()
+        }
+      ]);
     }
   }, [currentUniversity, messages.length, currentSessionId]);
 
+  // Scroll to bottom
   useEffect(() => {
     if (activeTab === 'chat') {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isLoading, activeTab]);
 
+  // Notification timer
   useEffect(() => {
     if (notification) {
-        const timer = setTimeout(() => setNotification(null), 4000);
-        return () => clearTimeout(timer);
+      const timer = setTimeout(() => setNotification(null), 4000);
+      return () => clearTimeout(timer);
     }
   }, [notification]);
 
   const handleNewChat = () => {
     setCurrentSessionId(null);
     setMessages([{
-        id: generateId(),
-        text: currentUniversity.welcomeMessage,
-        sender: Sender.AI,
-        timestamp: new Date()
+      id: generateId(),
+      text: currentUniversity.welcomeMessage,
+      sender: Sender.AI,
+      timestamp: new Date()
     }]);
     setIsHistoryOpen(false);
     setActiveTab('chat');
@@ -169,17 +187,22 @@ const App: React.FC = () => {
     setCurrentSessionId(session.id);
     setMessages(session.messages);
     setSelectedUniId(session.universityId);
-    prevUniIdRef.current = session.universityId; 
+    prevUniIdRef.current = session.universityId;
     setIsHistoryOpen(false);
     setActiveTab('chat');
   };
 
-  const handleDeleteSession = (e: React.MouseEvent, id: string) => {
+  const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    const newSessions = sessions.filter(s => s.id !== id);
-    setSessions(newSessions);
-    if (currentSessionId === id) {
+    try {
+      await deleteChatSession(id);
+      const newSessions = sessions.filter(s => s.id !== id);
+      setSessions(newSessions);
+      if (currentSessionId === id) {
         handleNewChat();
+      }
+    } catch (error) {
+      console.error("Failed to delete session", error);
     }
   };
 
@@ -188,9 +211,11 @@ const App: React.FC = () => {
 
     const userMessageText = input;
     setInput('');
-    
+
+    // 1. Optimistic UI update for user message
+    const tempUserMsgId = generateId();
     const newUserMessage: Message = {
-      id: generateId(),
+      id: tempUserMsgId,
       text: userMessageText,
       sender: Sender.USER,
       timestamp: new Date()
@@ -201,44 +226,47 @@ const App: React.FC = () => {
     setIsLoading(true);
 
     let activeSessionId = currentSessionId;
-    
-    // Optimistically update UI session
-    if (!activeSessionId) {
-        activeSessionId = generateId();
-        setCurrentSessionId(activeSessionId);
-        
-        const newSession: ChatSession = {
-            id: activeSessionId,
-            title: userMessageText.slice(0, 30) + (userMessageText.length > 30 ? '...' : ''),
-            universityId: currentUniversity.id,
-            messages: updatedMessages,
-            lastModified: Date.now()
-        };
-        
-        setSessions(prev => [newSession, ...prev]);
-    } else {
-        setSessions(prev => prev.map(s => s.id === activeSessionId ? {
-            ...s,
-            messages: updatedMessages,
-            lastModified: Date.now(),
-            universityId: currentUniversity.id
-        } : s).sort((a, b) => b.lastModified - a.lastModified));
-    }
 
-    const { stats: newStats, newBadges } = processUserInteraction(userMessageText);
-    setUserStats(newStats);
-
-    if (newBadges.length > 0) {
-        setNotification({
-            type: 'achievement',
-            text: `Unlocked: ${newBadges[0].name}!`
-        });
-    }
-
-    const userContext = generateUserContextSummary(newStats);
-    
     try {
-      // Pass activeSessionId to backend to enable DB saving
+      // 2. Ensure session exists or create one
+      let currentSession: ChatSession | null = null;
+
+      if (!activeSessionId) {
+        const newSession = await createChatSession(
+          currentUniversity.id,
+          userMessageText.slice(0, 30) + (userMessageText.length > 30 ? '...' : '')
+        );
+
+        if (newSession) {
+          activeSessionId = newSession.id;
+          setCurrentSessionId(activeSessionId);
+          currentSession = { ...newSession, messages: [] };
+          // Add to local state
+          setSessions(prev => [currentSession!, ...prev]);
+        }
+      }
+
+      // 3. Persist user message to backend
+      if (activeSessionId) {
+        await addMessage(activeSessionId, userMessageText, Sender.USER);
+      }
+
+      // 4. Process Stats
+      const { newBadges, leveledUp } = await processUserInteraction(userMessageText);
+      // Reload stats to get fresh state including XP
+      const freshStats = await getUserStats();
+      setUserStats(freshStats);
+
+      if (newBadges.length > 0) {
+        setNotification({
+          type: 'achievement',
+          text: `Unlocked: ${newBadges[0].name}!`
+        });
+      }
+
+      // 5. Generate AI Response
+      const userContext = await generateUserContextSummary();
+
       const { text, mapLocation } = await generateResponse(
         currentUniversity.id,
         currentUniversity.personaName,
@@ -246,11 +274,20 @@ const App: React.FC = () => {
         userContext,
         userMessageText,
         messages,
-        activeSessionId 
+        activeSessionId || 'temp-id'
       );
 
+      // 6. Persist AI message to backend
+      let savedAiMessage: Message | null = null;
+      if (activeSessionId) {
+        // Note: We might want to pass mapLocation to backend if schema supports it, 
+        // but for now assuming text only or handle map separately if needed
+        savedAiMessage = await addMessage(activeSessionId, text, Sender.AI);
+        // If mapLocation needs to be saved, we'd need to update the schema or store it in metadata
+      }
+
       const newAiMessage: Message = {
-        id: generateId(),
+        id: savedAiMessage?.id || generateId(),
         text: text,
         sender: Sender.AI,
         timestamp: new Date(),
@@ -260,14 +297,19 @@ const App: React.FC = () => {
       const finalMessages = [...updatedMessages, newAiMessage];
       setMessages(finalMessages);
 
-      setSessions(prev => prev.map(s => s.id === activeSessionId ? {
+      // Update session in list to show latest state/time
+      if (activeSessionId) {
+        setSessions(prev => prev.map(s => s.id === activeSessionId ? {
           ...s,
           messages: finalMessages,
-          lastModified: Date.now()
-      } : s));
+          lastModified: Date.now(),
+          universityId: currentUniversity.id
+        } : s).sort((a, b) => b.lastModified - a.lastModified));
+      }
 
     } catch (error) {
-      console.error("Error generating response", error);
+      console.error("Error in message flow", error);
+      // Optionally show error notification
     } finally {
       setIsLoading(false);
       inputRef.current?.focus();
@@ -289,17 +331,23 @@ const App: React.FC = () => {
   ];
 
   const formatDate = (timestamp: number) => {
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-      
-      if (diffDays === 0) return 'Today';
-      if (diffDays === 1) return 'Yesterday';
-      if (diffDays < 7) return `${diffDays} days ago`;
-      return date.toLocaleDateString();
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString();
   };
 
   const filteredSessions = sessions.filter(s => s.universityId === selectedUniId);
+
+  if (authLoading) {
+    return <div className="flex h-screen items-center justify-center bg-gray-50">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+    </div>;
+  }
 
   if (!isLoggedIn) {
     return <AuthScreen onAuthSuccess={() => setIsLoggedIn(true)} />;
@@ -307,13 +355,12 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden relative">
-      
+
       {notification && (
-        <div className={`absolute top-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 animate-in slide-in-from-top-5 fade-in flex items-center gap-2 font-bold transition-colors ${
-            notification.type === 'achievement' ? 'bg-yellow-500 text-white' : 'bg-green-600 text-white'
-        }`}>
-            {notification.type === 'achievement' ? <Star className="fill-current" size={18} /> : <Check size={18} />}
-            {notification.text}
+        <div className={`absolute top-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 animate-in slide-in-from-top-5 fade-in flex items-center gap-2 font-bold transition-colors ${notification.type === 'achievement' ? 'bg-yellow-500 text-white' : 'bg-green-600 text-white'
+          }`}>
+          {notification.type === 'achievement' ? <Star className="fill-current" size={18} /> : <Check size={18} />}
+          {notification.text}
         </div>
       )}
 
@@ -321,185 +368,181 @@ const App: React.FC = () => {
         <div className="max-w-4xl mx-auto flex justify-between items-center mb-3">
           <div className="flex items-center gap-2 md:gap-4">
             <div className={`bg-${currentUniversity.themeColor} p-2 rounded-lg text-white hidden md:block`}>
-               <GraduationCap size={24} />
+              <GraduationCap size={24} />
             </div>
             <div>
-               <h1 className="text-xl font-bold tracking-tight text-gray-900">UniPilot</h1>
-               <p className="text-xs text-gray-500 hidden sm:block">Interactive AI for {currentUniversity.shortName}</p>
+              <h1 className="text-xl font-bold tracking-tight text-gray-900">UniPilot</h1>
+              <p className="text-xs text-gray-500 hidden sm:block">Interactive AI for {currentUniversity.shortName}</p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-full p-1 relative">
-                <button 
-                    onClick={() => setIsAboutOpen(true)}
-                    className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-white rounded-full transition-all"
-                    title="About"
-                >
-                    <Info size={18} />
-                </button>
-                
-                <div className="w-px h-4 bg-gray-300 mx-0.5"></div>
-                
-                <div className="relative">
-                    <button 
-                        onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-                        className={`flex items-center gap-1 px-2 py-1.5 rounded-full transition-all ${
-                            isHistoryOpen ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 hover:bg-white'
-                        }`}
-                        title="Chat History"
-                    >
-                        <History size={18} />
-                        <span className="text-xs font-medium hidden sm:block">History</span>
-                        <ChevronDown size={12} />
-                    </button>
+              <button
+                onClick={() => setIsAboutOpen(true)}
+                className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-white rounded-full transition-all"
+                title="About"
+              >
+                <Info size={18} />
+              </button>
 
-                    {isHistoryOpen && (
-                        <div className="absolute top-full right-0 mt-3 w-64 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                            <div className="p-2 border-b border-gray-50">
-                                <button 
-                                    onClick={handleNewChat}
-                                    className="w-full flex items-center gap-2 px-3 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium"
-                                >
-                                    <Plus size={16} />
-                                    New Chat
-                                </button>
-                            </div>
-                            <div className="max-h-64 overflow-y-auto py-1">
-                                {filteredSessions.length === 0 ? (
-                                    <div className="px-4 py-8 text-center text-gray-400 text-xs">
-                                        <MessageSquare size={24} className="mx-auto mb-2 opacity-20" />
-                                        No saved history for {currentUniversity.shortName}.
-                                    </div>
-                                ) : (
-                                    filteredSessions.map(session => (
-                                        <div 
-                                            key={session.id}
-                                            onClick={() => handleLoadSession(session)}
-                                            className={`group flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors ${currentSessionId === session.id ? 'bg-blue-50 border-l-2 border-blue-500 pl-[10px]' : 'pl-3'}`}
-                                        >
-                                            <div className="overflow-hidden">
-                                                <p className={`text-sm font-medium truncate ${currentSessionId === session.id ? 'text-blue-700' : 'text-gray-700'}`}>
-                                                    {session.title || "Untitled Chat"}
-                                                </p>
-                                                <p className="text-[10px] text-gray-400">{formatDate(session.lastModified)}</p>
-                                            </div>
-                                            <button 
-                                                onClick={(e) => handleDeleteSession(e, session.id)}
-                                                className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 transition-all"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
+              <div className="w-px h-4 bg-gray-300 mx-0.5"></div>
+
+              <div className="relative">
+                <button
+                  onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+                  className={`flex items-center gap-1 px-2 py-1.5 rounded-full transition-all ${isHistoryOpen ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 hover:bg-white'
+                    }`}
+                  title="Chat History"
+                >
+                  <History size={18} />
+                  <span className="text-xs font-medium hidden sm:block">History</span>
+                  <ChevronDown size={12} />
+                </button>
+
+                {isHistoryOpen && (
+                  <div className="absolute top-full right-0 mt-3 w-64 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                    <div className="p-2 border-b border-gray-50">
+                      <button
+                        onClick={handleNewChat}
+                        className="w-full flex items-center gap-2 px-3 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium"
+                      >
+                        <Plus size={16} />
+                        New Chat
+                      </button>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto py-1">
+                      {filteredSessions.length === 0 ? (
+                        <div className="px-4 py-8 text-center text-gray-400 text-xs">
+                          <MessageSquare size={24} className="mx-auto mb-2 opacity-20" />
+                          No saved history for {currentUniversity.shortName}.
                         </div>
-                    )}
-                </div>
+                      ) : (
+                        filteredSessions.map(session => (
+                          <div
+                            key={session.id}
+                            onClick={() => handleLoadSession(session)}
+                            className={`group flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors ${currentSessionId === session.id ? 'bg-blue-50 border-l-2 border-blue-500 pl-[10px]' : 'pl-3'}`}
+                          >
+                            <div className="overflow-hidden">
+                              <p className={`text-sm font-medium truncate ${currentSessionId === session.id ? 'text-blue-700' : 'text-gray-700'}`}>
+                                {session.title || "Untitled Chat"}
+                              </p>
+                              <p className="text-[10px] text-gray-400">{formatDate(session.lastModified)}</p>
+                            </div>
+                            <button
+                              onClick={(e) => handleDeleteSession(e, session.id)}
+                              className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 transition-all"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <button 
-                onClick={() => setIsStatsOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+            <button
+              onClick={() => setIsStatsOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
             >
-                <Trophy size={16} className="text-yellow-600" />
-                <span className="text-sm font-semibold text-gray-700">Lvl {userStats.level}</span>
+              <Trophy size={16} className="text-yellow-600" />
+              <span className="text-sm font-semibold text-gray-700">Lvl {userStats.level}</span>
             </button>
 
-            <UniversitySelector 
-                universities={UNIVERSITIES}
-                selectedId={selectedUniId}
-                onSelect={setSelectedUniId}
-                isOpen={isDropdownOpen}
-                setIsOpen={setIsDropdownOpen}
+            <UniversitySelector
+              universities={UNIVERSITIES}
+              selectedId={selectedUniId}
+              onSelect={setSelectedUniId}
+              isOpen={isDropdownOpen}
+              setIsOpen={setIsDropdownOpen}
             />
 
-            <button 
-                onClick={logout}
-                className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                title="Log Out"
+            <button
+              onClick={logout}
+              className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+              title="Log Out"
             >
-                <LogOut size={20} />
+              <LogOut size={20} />
             </button>
           </div>
         </div>
 
         <div className="max-w-4xl mx-auto flex gap-6 px-2 overflow-x-auto">
-            <button
-                onClick={() => setActiveTab('chat')}
-                className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
-                    activeTab === 'chat' 
-                    ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}` 
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-            >
-                <MessageSquare size={16} />
-                Chat Assistant
-            </button>
-            <button
-                onClick={() => setActiveTab('events')}
-                className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
-                    activeTab === 'events' 
-                    ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}` 
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-            >
-                <Calendar size={16} />
-                Campus Events
-            </button>
-            <button
-                onClick={() => setActiveTab('multifaith')}
-                className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
-                    activeTab === 'multifaith' 
-                    ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}` 
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-            >
-                <Heart size={16} />
-                Multi-Faith Spaces
-            </button>
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'chat'
+                ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}`
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+          >
+            <MessageSquare size={16} />
+            Chat Assistant
+          </button>
+          <button
+            onClick={() => setActiveTab('events')}
+            className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'events'
+                ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}`
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+          >
+            <Calendar size={16} />
+            Campus Events
+          </button>
+          <button
+            onClick={() => setActiveTab('multifaith')}
+            className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'multifaith'
+                ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}`
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+          >
+            <Heart size={16} />
+            Multi-Faith Spaces
+          </button>
         </div>
       </header>
 
-      <main 
-        className="flex-1 overflow-y-auto relative scrollbar-hide" 
+      <main
+        className="flex-1 overflow-y-auto relative scrollbar-hide"
         onClick={() => { setIsDropdownOpen(false); setIsHistoryOpen(false); }}
       >
         <div className="max-w-3xl mx-auto px-4 py-8 pb-32">
-          
-          {activeTab === 'chat' && (
-              <>
-                {messages.map((msg) => (
-                    <MessageBubble key={msg.id} message={msg} university={currentUniversity} />
-                ))}
 
-                {isLoading && (
-                    <div className="flex w-full justify-start mb-6 animate-pulse">
-                        <div className="flex flex-row items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full bg-${currentUniversity.themeColor} flex items-center justify-center text-white opacity-50`}>
-                                <span className="text-sm">{currentUniversity.logoEmoji}</span>
-                            </div>
-                            <div className="bg-white border border-gray-100 px-5 py-4 rounded-2xl rounded-tl-none shadow-sm">
-                                <div className="flex space-x-1">
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                                </div>
-                            </div>
-                        </div>
+          {activeTab === 'chat' && (
+            <>
+              {messages.map((msg) => (
+                <MessageBubble key={msg.id} message={msg} university={currentUniversity} />
+              ))}
+
+              {isLoading && (
+                <div className="flex w-full justify-start mb-6 animate-pulse">
+                  <div className="flex flex-row items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full bg-${currentUniversity.themeColor} flex items-center justify-center text-white opacity-50`}>
+                      <span className="text-sm">{currentUniversity.logoEmoji}</span>
                     </div>
-                )}
-                <div ref={messagesEndRef} />
-              </>
+                    <div className="bg-white border border-gray-100 px-5 py-4 rounded-2xl rounded-tl-none shadow-sm">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </>
           )}
-          
+
           {activeTab === 'events' && (
-              <EventsTab events={currentCampusData.events} university={currentUniversity} />
+            <EventsTab events={currentCampusData.events} university={currentUniversity} />
           )}
 
           {activeTab === 'multifaith' && (
-              <MultiFaithTab spaces={currentCampusData.multiFaithSpaces} university={currentUniversity} />
+            <MultiFaithTab spaces={currentCampusData.multiFaithSpaces} university={currentUniversity} />
           )}
 
         </div>
@@ -507,70 +550,69 @@ const App: React.FC = () => {
 
       {activeTab === 'chat' && (
         <footer className="flex-none p-4 bg-white/80 backdrop-blur-md border-t border-gray-200 absolute bottom-0 w-full z-20 animate-in slide-in-from-bottom-2">
-            <div className="max-w-3xl mx-auto">
-                {messages.length < 3 && (
-                    <div className="flex gap-2 overflow-x-auto pb-3 mb-2 scrollbar-hide">
-                        {quickPrompts.map((prompt, i) => (
-                            <button 
-                                key={i} 
-                                onClick={() => setInput(prompt)}
-                                className="whitespace-nowrap px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-medium text-gray-600 rounded-full transition-colors"
-                            >
-                                {prompt}
-                            </button>
-                        ))}
-                    </div>
-                )}
+          <div className="max-w-3xl mx-auto">
+            {messages.length < 3 && (
+              <div className="flex gap-2 overflow-x-auto pb-3 mb-2 scrollbar-hide">
+                {quickPrompts.map((prompt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setInput(prompt)}
+                    className="whitespace-nowrap px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-medium text-gray-600 rounded-full transition-colors"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="relative flex items-end gap-2">
-                <button 
-                    onClick={handleNewChat}
-                    title="Reset / New Chat"
-                    className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-full transition-colors"
-                >
-                    <Trash2 size={20} />
-                </button>
+              <button
+                onClick={handleNewChat}
+                title="Reset / New Chat"
+                className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-full transition-colors"
+              >
+                <Trash2 size={20} />
+              </button>
 
-                <div className="relative flex-1">
-                    <input
-                        ref={inputRef}
-                        type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder={`Ask ${currentUniversity.personaName} a question...`}
-                        className="w-full pl-5 pr-12 py-3.5 bg-gray-100 border-transparent focus:bg-white focus:border-gray-300 focus:ring-0 rounded-2xl shadow-inner text-gray-800 placeholder-gray-500 transition-all"
-                        disabled={isLoading}
-                    />
-                    <div className="absolute right-2 bottom-1.5">
-                        <button
-                            onClick={handleSendMessage}
-                            disabled={!input.trim() || isLoading}
-                            className={`p-2 rounded-xl transition-all transform active:scale-95 ${
-                                input.trim() && !isLoading 
-                                ? `bg-${currentUniversity.themeColor} text-white shadow-md hover:opacity-90` 
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                            }`}
-                        >
-                            <Send size={18} />
-                        </button>
-                    </div>
+              <div className="relative flex-1">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={`Ask ${currentUniversity.personaName} a question...`}
+                  className="w-full pl-5 pr-12 py-3.5 bg-gray-100 border-transparent focus:bg-white focus:border-gray-300 focus:ring-0 rounded-2xl shadow-inner text-gray-800 placeholder-gray-500 transition-all"
+                  disabled={isLoading}
+                />
+                <div className="absolute right-2 bottom-1.5">
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!input.trim() || isLoading}
+                    className={`p-2 rounded-xl transition-all transform active:scale-95 ${input.trim() && !isLoading
+                        ? `bg-${currentUniversity.themeColor} text-white shadow-md hover:opacity-90`
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
+                  >
+                    <Send size={18} />
+                  </button>
                 </div>
+              </div>
             </div>
             <div className="text-center mt-2">
-                <p className="text-[10px] text-gray-400">Powered by Google Gemini. Information may vary.</p>
+              <p className="text-[10px] text-gray-400">Powered by Google Gemini. Information may vary.</p>
             </div>
-            </div>
+          </div>
         </footer>
       )}
 
-      <GamificationPanel 
-        stats={userStats} 
-        isOpen={isStatsOpen} 
-        onClose={() => setIsStatsOpen(false)} 
+      <GamificationPanel
+        stats={userStats}
+        isOpen={isStatsOpen}
+        onClose={() => setIsStatsOpen(false)}
       />
 
-      <AboutModal 
+      <AboutModal
         isOpen={isAboutOpen}
         onClose={() => setIsAboutOpen(false)}
       />

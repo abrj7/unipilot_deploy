@@ -13,7 +13,19 @@ const GamificationPanel: React.FC<Props> = ({ stats, isOpen, onClose }) => {
   if (!isOpen) return null;
 
   const nextLevelPoints = stats.level * 50;
-  const progress = (stats.points % 50) / 50 * 100;
+  const progress = (stats.experience % 50) / 50 * 100;
+
+  const getTopics = () => {
+    if (stats.topicCounts && Object.keys(stats.topicCounts).length > 0) {
+      return Object.entries(stats.topicCounts).map(([name, count]) => ({ name, count }));
+    }
+    if (stats.topicsExplored && stats.topicsExplored.length > 0) {
+      return stats.topicsExplored.map(name => ({ name, count: 1 }));
+    }
+    return [];
+  };
+
+  const topics = getTopics();
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex justify-end transition-opacity">
@@ -37,11 +49,11 @@ const GamificationPanel: React.FC<Props> = ({ stats, isOpen, onClose }) => {
                 <p className="text-4xl font-bold">{stats.level}</p>
               </div>
               <div className="text-right">
-                <p className="text-2xl font-bold">{stats.points}</p>
-                <p className="text-indigo-100 text-sm">Total Points</p>
+                <p className="text-2xl font-bold">{stats.experience}</p>
+                <p className="text-indigo-100 text-sm">Total XP</p>
               </div>
             </div>
-            
+
             {/* Progress Bar */}
             <div className="mt-4">
               <div className="flex justify-between text-xs mb-1 opacity-80">
@@ -49,8 +61,8 @@ const GamificationPanel: React.FC<Props> = ({ stats, isOpen, onClose }) => {
                 <span>{Math.round(progress)}%</span>
               </div>
               <div className="h-3 bg-black/20 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-yellow-400 transition-all duration-500" 
+                <div
+                  className="h-full bg-yellow-400 transition-all duration-500"
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -61,40 +73,38 @@ const GamificationPanel: React.FC<Props> = ({ stats, isOpen, onClose }) => {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Achievements</h3>
           <div className="grid grid-cols-2 gap-4">
             {stats.badges.map((badge) => (
-              <div 
+              <div
                 key={badge.id}
-                className={`p-4 rounded-xl border-2 transition-all ${
-                  badge.unlocked 
-                    ? 'border-yellow-400 bg-yellow-50' 
-                    : 'border-gray-100 bg-gray-50 opacity-60 grayscale'
-                }`}
+                className={`p-4 rounded-xl border-2 transition-all ${badge.unlocked
+                  ? 'border-yellow-400 bg-yellow-50'
+                  : 'border-gray-100 bg-gray-50 opacity-60 grayscale'
+                  }`}
               >
                 <div className="text-3xl mb-2">{badge.icon}</div>
                 <p className="font-bold text-gray-900 text-sm">{badge.name}</p>
                 <p className="text-xs text-gray-500 mt-1">{badge.description}</p>
                 {!badge.unlocked && (
-                    <p className="text-[10px] text-gray-400 mt-2 italic">Locked: {badge.conditionDescription}</p>
+                  <p className="text-[10px] text-gray-400 mt-2 italic">Locked: {badge.conditionDescription}</p>
                 )}
               </div>
             ))}
           </div>
-          
+
           {/* Study Stats */}
           <div className="mt-8">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">Study Interests</h3>
-              {Object.keys(stats.topicCounts).length === 0 ? (
-                  <p className="text-gray-500 text-sm italic">Ask questions to track your interests!</p>
-              ) : (
-                  <div className="flex flex-wrap gap-2">
-                      {Object.entries(stats.topicCounts).map(([topic, count]) => (
-                          <div key={topic} className="px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-600 capitalize">
-                              {topic}: {count}
-                          </div>
-                      ))}
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Study Interests</h3>
+            {topics.length === 0 ? (
+              <p className="text-gray-500 text-sm italic">Ask questions to track your interests!</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {topics.map(({ name, count }) => (
+                  <div key={name} className="px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-600 capitalize">
+                    {name}: {count}
                   </div>
-              )}
+                ))}
+              </div>
+            )}
           </div>
-
         </div>
       </div>
     </div>
