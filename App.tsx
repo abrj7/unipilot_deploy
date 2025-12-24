@@ -149,6 +149,7 @@ const App: React.FC = () => {
           timestamp: new Date()
         }]);
       }
+      setActiveTab('chat'); // Reset to chat tab on university change
     }
   }, [selectedUniId, sessions, currentUniversity]);
 
@@ -368,8 +369,8 @@ const App: React.FC = () => {
 
       {notification && (
         <div className={`absolute top-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 animate-in slide-in-from-top-5 fade-in flex items-center gap-2 font-bold transition-colors ${notification.type === 'achievement' ? 'bg-yellow-500 text-white' :
-            notification.type === 'error' ? 'bg-red-500 text-white' :
-              'bg-green-600 text-white'
+          notification.type === 'error' ? 'bg-red-500 text-white' :
+            'bg-green-600 text-white'
           }`}>
           {notification.type === 'achievement' ? <Star className="fill-current" size={18} /> :
             notification.type === 'error' ? <Info size={18} /> :
