@@ -1,12 +1,12 @@
 
-import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType, type Tool, type Schema } from "@google/generative-ai";
 import { Message, Sender, CampusEvent } from '../types';
 import { DATA_UW, DATA_UOFT, DATA_MAC, DATA_WESTERN, DATA_QUEENS, DATA_TMU } from './campusData';
 import { USE_BACKEND } from '../constants';
 import { chatWithBackend, summarizeEventsBackend } from './apiService';
 
 // Initialize Gemini Client (Client Side) - Lazy loaded to prevent crash if no API key
-let ai: GoogleGenAI | null = null;
+let ai: GoogleGenerativeAI | null = null;
 const getAI = () => {
   if (!ai) {
     // Vite uses import.meta.env for environment variables
@@ -15,9 +15,56 @@ const getAI = () => {
       console.warn("No Gemini API key found. Client-side AI features will not work.");
       return null;
     }
-    ai = new GoogleGenAI({ apiKey });
+    ai = new GoogleGenerativeAI(apiKey);
   }
   return ai;
+};
+
+// Rate Limiter Utility
+class RateLimiter {
+  private lastRequestTime: number = 0;
+  private minIntervalMs: number;
+
+  constructor(requestsPerMinute: number) {
+    this.minIntervalMs = (60 * 1000) / requestsPerMinute;
+  }
+
+  async throttle(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+
+    if (timeSinceLastRequest < this.minIntervalMs) {
+      const waitTime = this.minIntervalMs - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+
+    this.lastRequestTime = Date.now();
+  }
+}
+
+// Initialize global rate limiter (e.g., 6 RPM for strict free tier safety)
+const rateLimiter = new RateLimiter(6);
+
+// Retry utility with exponential backoff
+const retryWithBackoff = async <T>(
+  operation: () => Promise<T>,
+  retries: number = 3,
+  delay: number = 1000
+): Promise<T> => {
+  try {
+    await rateLimiter.throttle(); // Respect rate limits before trying
+    return await operation();
+  } catch (error: any) {
+    const isQuotaError = error.message?.includes("429") || error.toString().includes("429");
+
+    if (isQuotaError && retries > 0) {
+      console.warn(`[Gemini] Quota hit (429). Retrying in ${delay}ms... (${retries} attempts left)`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return retryWithBackoff(operation, retries - 1, delay * 2);
+    }
+
+    throw error;
+  }
 };
 
 const getCampusDataForId = (id: string) => {
@@ -43,8 +90,6 @@ export const generateResponse = async (
 ): Promise<{ text: string, mapLocation?: { lat: number, lng: number, name: string } }> => {
 
   // --- CLIENT SIDE MODE (DEFAULT) ---
-  // The user specified no external backend server is needed, so we use the client-side SDK.
-
   const genAI = getAI();
   if (!genAI) {
     return { text: "No API key configured. Please set the VITE_GEMINI_API_KEY environment variable in your .env file." };
@@ -53,19 +98,25 @@ export const generateResponse = async (
   const campusData = getCampusDataForId(universityId);
   const dataContext = JSON.stringify(campusData, null, 2);
 
-  const displayMapTool: FunctionDeclaration = {
-    name: "display_map",
-    description: "Display an interactive map of a specific campus location.",
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        location_name: {
-          type: Type.STRING,
-          description: "The name of the location to find on the map."
+  // Define tool using simple object structure compatible with SDK
+  const displayMapTool: Tool = {
+    functionDeclarations: [
+      {
+        name: "display_map",
+        description: "Display an interactive map of a specific campus location.",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            location_name: {
+              type: SchemaType.STRING,
+              description: "The name of the location to find on the map.",
+              nullable: false
+            }
+          },
+          required: ["location_name"]
         }
-      },
-      required: ["location_name"]
-    }
+      }
+    ]
   };
 
   const systemInstruction = `
@@ -104,54 +155,40 @@ export const generateResponse = async (
   `;
 
   try {
-    const recentHistory = history.slice(-5).map(msg => ({
+    // Correct logic for @google/generative-ai
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash-exp",
+      systemInstruction: systemInstruction,
+      tools: [displayMapTool]
+    });
+
+    // Prepare history: verify it starts with 'user'
+    let rawHistory = history.slice(-6).map(msg => ({
       role: msg.sender === Sender.USER ? 'user' : 'model',
       parts: [{ text: msg.text }]
     }));
 
-    let response = await genAI.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [
-        ...recentHistory,
-        { role: 'user', parts: [{ text: userMessage }] }
-      ],
-      config: {
-        systemInstruction: systemInstruction,
-        tools: [{ functionDeclarations: [displayMapTool] }]
-      }
+    // If the first message is from the model, drop it
+    if (rawHistory.length > 0 && rawHistory[0].role === 'model') {
+      rawHistory = rawHistory.slice(1);
+    }
+
+    const chat = model.startChat({
+      history: rawHistory
     });
 
+    // Send the user message with RETRY Logic
+    const result = await retryWithBackoff(() => chat.sendMessage(userMessage));
+    const response = await result.response;
+    let finalText = response.text(); // Standard method in new SDK
+
     let mapLocation = undefined;
-    let finalText = "";
 
-    // The SDK likely exposes text as a method or a property depending on version. 
-    // Typescript says it's a getter, so access as property.
-    if (response.text) {
-      if (typeof response.text === 'function') {
-        // @ts-ignore
-        finalText = response.text();
-      } else {
-        finalText = response.text as string;
-      }
-    } else if (response.candidates && response.candidates.length > 0) {
-      const part = response.candidates[0]?.content?.parts?.[0];
-      if (part && 'text' in part) {
-        finalText = part.text as string;
-      }
-    }
+    // Function calls handling
+    const calls = response.functionCalls();
 
-    let functionCalls: any[] = [];
-    if (response.functionCalls) {
-      if (typeof response.functionCalls === 'function') {
-        // @ts-ignore
-        functionCalls = response.functionCalls();
-      } else {
-        functionCalls = response.functionCalls as any[];
-      }
-    }
-
-    if (functionCalls && functionCalls.length > 0) {
-      const call = functionCalls[0];
+    if (calls && calls.length > 0) {
+      const call = calls[0];
 
       if (call.name === 'display_map') {
         const locName = call.args['location_name'] as string;
@@ -172,25 +209,16 @@ export const generateResponse = async (
           toolResult = { result: `Found: ${location.name}` };
         }
 
-        response = await genAI.models.generateContent({
-          model: 'gemini-1.5-flash',
-          contents: [
-            ...recentHistory,
-            { role: 'user', parts: [{ text: userMessage }] },
-            { role: 'model', parts: [{ functionCall: call }] },
-            { role: 'user', parts: [{ functionResponse: { name: call.name, response: toolResult } }] }
-          ],
-          config: { systemInstruction }
-        });
-
-        if (response.text) {
-          if (typeof response.text === 'function') {
-            // @ts-ignore
-            finalText = response.text();
-          } else {
-            finalText = response.text as string;
+        // Send tool response with RETRY Logic
+        const result2 = await retryWithBackoff(() => chat.sendMessage([
+          {
+            functionResponse: {
+              name: 'display_map',
+              response: toolResult
+            }
           }
-        }
+        ]));
+        finalText = result2.response.text();
       }
     }
 
@@ -200,6 +228,9 @@ export const generateResponse = async (
     };
 
   } catch (error) {
+    if (error.toString().includes("429")) {
+      return { text: "I'm receiving too many requests right now. Please try again in a few seconds." };
+    }
     console.error("Gemini Error:", error);
     return { text: "Connection Error. Check console for details." };
   }
@@ -240,14 +271,13 @@ export const generateEventSummary = async (
   `;
 
   try {
-    const response = await genAI.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [
-        { role: 'user', parts: [{ text: prompt }] }
-      ]
-    });
-    return response.text || "No summary generated.";
-  } catch (e) {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+    const result = await retryWithBackoff(() => model.generateContent(prompt));
+    return result.response.text();
+  } catch (e: any) {
+    if (e.toString().includes("429")) {
+      return "Rate limit exceeded. Please try again later.";
+    }
     console.error("Event Summary Error:", e);
     return "Check out the events below!";
   }

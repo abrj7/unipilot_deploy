@@ -18,7 +18,7 @@ import { Send, GraduationCap, Info, Trash2, Trophy, Check, Star, MessageSquare, 
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
 const App: React.FC = () => {
-  console.log("App component is initializing...");
+  // console.log("App component is initializing...");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -60,7 +60,7 @@ const App: React.FC = () => {
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
 
-  const [notification, setNotification] = useState<{ text: string, type: 'success' | 'achievement' } | null>(null);
+  const [notification, setNotification] = useState<{ text: string, type: 'success' | 'achievement' | 'error' } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -319,6 +319,10 @@ const App: React.FC = () => {
 
     } catch (error) {
       console.error("Error in message flow", error);
+      setNotification({
+        type: 'error',
+        text: "Failed to send message. Please try again."
+      });
     } finally {
       setIsLoading(false);
       inputRef.current?.focus();
@@ -366,9 +370,13 @@ const App: React.FC = () => {
     <div className="flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden relative">
 
       {notification && (
-        <div className={`absolute top-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 animate-in slide-in-from-top-5 fade-in flex items-center gap-2 font-bold transition-colors ${notification.type === 'achievement' ? 'bg-yellow-500 text-white' : 'bg-green-600 text-white'
+        <div className={`absolute top-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 animate-in slide-in-from-top-5 fade-in flex items-center gap-2 font-bold transition-colors ${notification.type === 'achievement' ? 'bg-yellow-500 text-white' :
+            notification.type === 'error' ? 'bg-red-500 text-white' :
+              'bg-green-600 text-white'
           }`}>
-          {notification.type === 'achievement' ? <Star className="fill-current" size={18} /> : <Check size={18} />}
+          {notification.type === 'achievement' ? <Star className="fill-current" size={18} /> :
+            notification.type === 'error' ? <Info size={18} /> :
+              <Check size={18} />}
           {notification.text}
         </div>
       )}

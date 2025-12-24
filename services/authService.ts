@@ -1,6 +1,7 @@
 // src/services/authService.ts
 
 import { supabase } from './supabaseClient';
+import { Session, AuthChangeEvent } from '@supabase/supabase-js';
 
 /**
  * Register a new user with email, password, name, and university
@@ -137,7 +138,7 @@ export const getUserId = async (): Promise<string | null> => {
  *   console.log('Auth state changed:', event, session);
  * });
  */
-export const onAuthStateChange = (callback: (event: string, session: any) => void) => {
+export const onAuthStateChange = (callback: (event: AuthChangeEvent, session: Session | null) => void) => {
   return supabase.auth.onAuthStateChange(callback);
 };
 
