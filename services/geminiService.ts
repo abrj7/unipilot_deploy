@@ -9,7 +9,8 @@ import { chatWithBackend, summarizeEventsBackend } from './apiService';
 let ai: GoogleGenAI | null = null;
 const getAI = () => {
   if (!ai) {
-    const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+    // Vite uses import.meta.env for environment variables
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GOOGLE_API_KEY || "";
     if (!apiKey) {
       console.warn("No Gemini API key found. Client-side AI features will not work.");
       return null;
@@ -40,21 +41,13 @@ export const generateResponse = async (
   history: Message[],
   sessionId: string | null = null
 ): Promise<{ text: string, mapLocation?: { lat: number, lng: number, name: string } }> => {
-  
-  // --- BACKEND MODE ---
-  if (USE_BACKEND) {
-    try {
-        return await chatWithBackend(universityId, userMessage, history, userContext, sessionId);
-    } catch (e) {
-        console.warn("Backend failed", e);
-        return { text: "Error connecting to UniPilot Backend. Please ensure the Python server is running." };
-    }
-  }
 
-  // --- CLIENT SIDE MODE (DEMO) ---
+  // --- CLIENT SIDE MODE (DEFAULT) ---
+  // The user specified no external backend server is needed, so we use the client-side SDK.
+
   const genAI = getAI();
   if (!genAI) {
-    return { text: "No API key configured. Please set the GEMINI_API_KEY environment variable or enable backend mode." };
+    return { text: "No API key configured. Please set the VITE_GEMINI_API_KEY environment variable in your .env file." };
   }
 
   const campusData = getCampusDataForId(universityId);
@@ -76,11 +69,38 @@ export const generateResponse = async (
   };
 
   const systemInstruction = `
-    You are ${personaName}, an AI assistant for ${universityId}.
-    Style Guide: ${styleGuide}
-    User Context: ${userContext}
-    Data: ${dataContext}
-    Guidelines: 1. Accurate. 2. Markdown. 3. Use display_map for locations.
+    You are ${personaName}, an orientation leader and upper-year student guide for ${universityId}.
+    
+    CORE ASSUMPTION: The user does not know building names, shortcuts, or campus culture.
+    
+    YOUR GOAL: Explain what it is, where it is, why to go there, how to get there, and when it's best.
+
+    🧠 UNIVERSAL RESPONSE TEMPLATE (STRICTLY FOLLOW THIS):
+    1. One-sentence clear answer
+    
+    2. detailed_breakdown:
+       - What it is (plain language)
+       - Where it is (landmarks, nearby buildings)
+       - Why people use it
+       - Best time to go
+
+    • Option 1 (if applicable)
+    • Option 2 (if applicable)
+
+    Helpful tip (access, hours, noise, food)
+    
+    Offer next action (map, directions, save, reminder)
+
+    DATA CONTEXT:
+    ${dataContext}
+
+    USER CONTEXT:
+    ${userContext}
+
+    STYLE GUIDE:
+    ${styleGuide}
+
+    Always format nicely with Markdown. Use bolding for key terms.
   `;
 
   try {
@@ -90,7 +110,7 @@ export const generateResponse = async (
     }));
 
     let response = await genAI.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: [
         ...recentHistory,
         { role: 'user', parts: [{ text: userMessage }] }
@@ -102,23 +122,47 @@ export const generateResponse = async (
     });
 
     let mapLocation = undefined;
-    let finalText = response.text || "";
+    let finalText = "";
 
-    const functionCalls = response.functionCalls;
-    
+    // The SDK likely exposes text as a method or a property depending on version. 
+    // Typescript says it's a getter, so access as property.
+    if (response.text) {
+      if (typeof response.text === 'function') {
+        // @ts-ignore
+        finalText = response.text();
+      } else {
+        finalText = response.text as string;
+      }
+    } else if (response.candidates && response.candidates.length > 0) {
+      const part = response.candidates[0]?.content?.parts?.[0];
+      if (part && 'text' in part) {
+        finalText = part.text as string;
+      }
+    }
+
+    let functionCalls: any[] = [];
+    if (response.functionCalls) {
+      if (typeof response.functionCalls === 'function') {
+        // @ts-ignore
+        functionCalls = response.functionCalls();
+      } else {
+        functionCalls = response.functionCalls as any[];
+      }
+    }
+
     if (functionCalls && functionCalls.length > 0) {
       const call = functionCalls[0];
-      
+
       if (call.name === 'display_map') {
         const locName = call.args['location_name'] as string;
-        
-        const location = campusData.locations.find(l => 
-          l.name.toLowerCase().includes(locName.toLowerCase()) || 
+
+        const location = campusData.locations.find(l =>
+          l.name.toLowerCase().includes(locName.toLowerCase()) ||
           locName.toLowerCase().includes(l.name.toLowerCase())
         );
 
         let toolResult = { result: "Location not found." };
-        
+
         if (location && location.coordinates) {
           mapLocation = {
             lat: location.coordinates[0],
@@ -129,27 +173,35 @@ export const generateResponse = async (
         }
 
         response = await genAI.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: [
-                ...recentHistory,
-                { role: 'user', parts: [{ text: userMessage }] },
-                { role: 'model', parts: [{ functionCall: call }] },
-                { role: 'user', parts: [{ functionResponse: { name: call.name, response: toolResult } }] }
-            ],
-            config: { systemInstruction }
+          model: 'gemini-1.5-flash',
+          contents: [
+            ...recentHistory,
+            { role: 'user', parts: [{ text: userMessage }] },
+            { role: 'model', parts: [{ functionCall: call }] },
+            { role: 'user', parts: [{ functionResponse: { name: call.name, response: toolResult } }] }
+          ],
+          config: { systemInstruction }
         });
-        
-        finalText = response.text || "";
+
+        if (response.text) {
+          if (typeof response.text === 'function') {
+            // @ts-ignore
+            finalText = response.text();
+          } else {
+            finalText = response.text as string;
+          }
+        }
       }
     }
 
     return {
-        text: finalText || "I'm having trouble generating a response right now.",
-        mapLocation
+      text: finalText || "I'm having trouble generating a response right now. (Empty Response)",
+      mapLocation
     };
 
   } catch (error) {
-    return { text: "Connection Error." };
+    console.error("Gemini Error:", error);
+    return { text: "Connection Error. Check console for details." };
   }
 };
 
@@ -159,9 +211,44 @@ export const generateEventSummary = async (
   personaName: string,
   styleGuide: string
 ): Promise<string> => {
-  
-  if (USE_BACKEND) {
-    return await summarizeEventsBackend(universityName, events);
+
+  // Client-Side Generation
+  const genAI = getAI();
+  if (!genAI) {
+    return "Unable to generate summary: API Key missing.";
   }
-  return "Client side summary disabled for now.";
+
+  const prompt = `
+    You are ${personaName}, an enthusiastic guide for ${universityName}.
+    
+    Task: Write a brief, exciting weekly briefing summarizing these campus events for a student.
+    
+    Events List:
+    ${events.map(e => `- ${e.title} (${e.date}): ${e.description}`).join('\n')}
+    
+    Style Guide: ${styleGuide}
+    
+    Format:
+    ## 📅 Campus Pulse
+    [1 paragraph summary of vibes]
+    
+    🔥 Highlights
+    - [Event 1]
+    - [Event 2]
+    
+    Keep it under 150 words.
+  `;
+
+  try {
+    const response = await genAI.models.generateContent({
+      model: 'gemini-1.5-flash',
+      contents: [
+        { role: 'user', parts: [{ text: prompt }] }
+      ]
+    });
+    return response.text || "No summary generated.";
+  } catch (e) {
+    console.error("Event Summary Error:", e);
+    return "Check out the events below!";
+  }
 };

@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { UNIVERSITIES, DEFAULT_UNIVERSITY_ID, USE_BACKEND, INITIAL_BADGES } from './constants';
 import { Message, Sender, UserStats, ChatSession } from './types';
 import { generateResponse } from './services/geminiService';
-import { getUserStats, processUserInteraction, generateUserContextSummary } from './services/statsService'; // Updated import
-import { getChatSessions, createChatSession, addMessage, deleteChatSession } from './services/chatService'; // New import
-import { isAuthenticated, logout } from './services/authService';
+import { getUserStats, processUserInteraction, generateUserContextSummary } from './services/statsService';
+import { getChatSessions, createChatSession, addMessage, deleteChatSession } from './services/chatService';
+import { isAuthenticated, logout, getUserProfile } from './services/authService';
 import { DATA_UW, DATA_UOFT, DATA_MAC, DATA_WESTERN, DATA_QUEENS, DATA_TMU } from './services/campusData';
 import UniversitySelector from './components/UniversitySelector';
 import MessageBubble from './components/MessageBubble';
@@ -87,6 +87,16 @@ const App: React.FC = () => {
     if (isLoggedIn) {
       const loadData = async () => {
         try {
+          // Load User Profile for preferred university
+          let profile = null;
+          if (USE_BACKEND) {
+            profile = await getUserProfile();
+            if (profile && profile.selected_university_id) {
+              setSelectedUniId(profile.selected_university_id);
+              prevUniIdRef.current = profile.selected_university_id;
+            }
+          }
+
           // Load Stats
           const stats = await getUserStats();
           setUserStats(stats);
@@ -106,7 +116,10 @@ const App: React.FC = () => {
           setSessions(hydratedSessions);
 
           // Select current university session if exists
-          const currentUniSessions = hydratedSessions.filter(s => s.universityId === selectedUniId);
+          // If we loaded a profile, prefer that ID, otherwise use default/current
+          const targetUniId = (profile?.selected_university_id) || selectedUniId;
+
+          const currentUniSessions = hydratedSessions.filter(s => s.universityId === targetUniId);
           if (currentUniSessions.length > 0) {
             const latest = currentUniSessions[0];
             setCurrentSessionId(latest.id);
@@ -280,10 +293,7 @@ const App: React.FC = () => {
       // 6. Persist AI message to backend
       let savedAiMessage: Message | null = null;
       if (activeSessionId) {
-        // Note: We might want to pass mapLocation to backend if schema supports it, 
-        // but for now assuming text only or handle map separately if needed
         savedAiMessage = await addMessage(activeSessionId, text, Sender.AI);
-        // If mapLocation needs to be saved, we'd need to update the schema or store it in metadata
       }
 
       const newAiMessage: Message = {
@@ -309,7 +319,6 @@ const App: React.FC = () => {
 
     } catch (error) {
       console.error("Error in message flow", error);
-      // Optionally show error notification
     } finally {
       setIsLoading(false);
       inputRef.current?.focus();
@@ -475,8 +484,8 @@ const App: React.FC = () => {
           <button
             onClick={() => setActiveTab('chat')}
             className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'chat'
-                ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}`
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+              ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}`
+              : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
           >
             <MessageSquare size={16} />
@@ -485,8 +494,8 @@ const App: React.FC = () => {
           <button
             onClick={() => setActiveTab('events')}
             className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'events'
-                ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}`
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+              ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}`
+              : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
           >
             <Calendar size={16} />
@@ -495,8 +504,8 @@ const App: React.FC = () => {
           <button
             onClick={() => setActiveTab('multifaith')}
             className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'multifaith'
-                ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}`
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+              ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}`
+              : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
           >
             <Heart size={16} />
@@ -590,8 +599,8 @@ const App: React.FC = () => {
                     onClick={handleSendMessage}
                     disabled={!input.trim() || isLoading}
                     className={`p-2 rounded-xl transition-all transform active:scale-95 ${input.trim() && !isLoading
-                        ? `bg-${currentUniversity.themeColor} text-white shadow-md hover:opacity-90`
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      ? `bg-${currentUniversity.themeColor} text-white shadow-md hover:opacity-90`
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                       }`}
                   >
                     <Send size={18} />

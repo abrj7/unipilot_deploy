@@ -3,20 +3,56 @@
 import { supabase } from './supabaseClient';
 
 /**
- * Register a new user with email and password
+ * Register a new user with email, password, name, and university
  */
-export const register = async (email: string, password: string) => {
+export const register = async (email: string, password: string, name: string, universityId: string) => {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
+    options: {
+      data: {
+        full_name: name,
+      },
+    },
   });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  // Note: Supabase may require email confirmation depending on your settings
-  // Check your Supabase dashboard under Authentication > Email Auth
+  // Update public profile with selected university
+  if (data.user) {
+    const { error: profileError } = await supabase
+      .from('users')
+      .update({ selected_university_id: universityId })
+      .eq('id', data.user.id);
+
+    if (profileError) {
+      console.error('Error updating user profile:', profileError);
+      // Don't throw here, as auth was successful
+    }
+  }
+
+  return data;
+};
+
+/**
+ * Get public user profile
+ */
+export const getUserProfile = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', user.id)
+    .single();
+
+  if (error) {
+    console.error('Error fetching profile:', error);
+    return null;
+  }
   return data;
 };
 
