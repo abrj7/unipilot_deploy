@@ -13,7 +13,8 @@ import AboutModal from './components/AboutModal';
 import EventsTab from './components/EventsTab';
 import MultiFaithTab from './components/MultiFaithTab';
 import AuthScreen from './components/AuthScreen';
-import { Send, GraduationCap, Info, Trash2, Trophy, Check, Star, MessageSquare, Calendar, History, Plus, ChevronDown, Heart, LogOut } from 'lucide-react';
+import { Send, GraduationCap, Info, Trash2, Trophy, Check, Star, MessageSquare, Calendar, History, Plus, ChevronDown, Heart, LogOut, Sun, Moon } from 'lucide-react';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
@@ -364,8 +365,10 @@ const App: React.FC = () => {
     return <AuthScreen onAuthSuccess={() => setIsLoggedIn(true)} />;
   }
 
+  const { theme, toggleTheme } = useTheme();
+
   return (
-    <div className="flex flex-col h-screen bg-gray-50 text-gray-900 font-sans overflow-hidden relative">
+    <div className={`flex flex-col h-screen font-sans overflow-hidden relative squared-design transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900 text-slate-100' : 'bg-stone-50 text-gray-900'}`}>
 
       {notification && (
         <div className={`absolute top-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 animate-in slide-in-from-top-5 fade-in flex items-center gap-2 font-bold transition-colors ${notification.type === 'achievement' ? 'bg-yellow-500 text-white' :
@@ -379,35 +382,41 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <header className="flex-none bg-white border-b border-gray-200 pt-4 pb-2 px-4 z-10 shadow-sm">
+      <header className={`flex-none pt-4 pb-2 px-4 z-10 shadow-sm border-b transition-colors duration-300 ${theme === 'dark' ? 'bg-black border-slate-800' : 'bg-white border-gray-200'}`}>
         <div className="max-w-4xl mx-auto flex justify-between items-center mb-3">
           <div className="flex items-center gap-2 md:gap-4">
-            <div className={`bg-${currentUniversity.themeColor} p-2 rounded-lg text-white hidden md:block`}>
-              <GraduationCap size={24} />
-            </div>
+            {/* University Logo */}
+            <img 
+              src={currentUniversity.logoPath} 
+              alt={`${currentUniversity.shortName} logo`}
+              className="w-10 h-10 object-contain"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-gray-900">UniPilot</h1>
-              <p className="text-xs text-gray-500 hidden sm:block">Interactive AI for {currentUniversity.shortName}</p>
+              <h1 className={`text-xl font-bold tracking-tight ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>UniPilot</h1>
+              <p className={`text-xs hidden sm:block ${theme === 'dark' ? 'text-slate-400' : 'text-gray-500'}`}>Interactive AI for {currentUniversity.shortName}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-full p-1 relative">
+            <div className={`flex items-center gap-1 p-1 rounded-md border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-gray-50 border-gray-100'}`}>
               <button
                 onClick={() => setIsAboutOpen(true)}
-                className="p-1.5 text-gray-500 hover:text-gray-800 hover:bg-white rounded-full transition-all"
+                className={`p-1.5 rounded-md transition-all ${theme === 'dark' ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-gray-500 hover:text-gray-800 hover:bg-white'}`}
                 title="About"
               >
                 <Info size={18} />
               </button>
 
-              <div className="w-px h-4 bg-gray-300 mx-0.5"></div>
+              <div className={`w-px h-4 mx-0.5 ${theme === 'dark' ? 'bg-slate-600' : 'bg-gray-300'}`}></div>
 
               <div className="relative">
                 <button
                   onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-                  className={`flex items-center gap-1 px-2 py-1.5 rounded-full transition-all ${isHistoryOpen ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 hover:bg-white'
-                    }`}
+                  className={`flex items-center gap-1 px-2 py-1.5 rounded-md transition-all ${isHistoryOpen 
+                    ? (theme === 'dark' ? 'bg-slate-700 text-blue-400 shadow-sm' : 'bg-white text-blue-600 shadow-sm')
+                    : (theme === 'dark' ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-gray-500 hover:text-gray-800 hover:bg-white')
+                  }`}
                   title="Chat History"
                 >
                   <History size={18} />
@@ -476,6 +485,15 @@ const App: React.FC = () => {
               setIsOpen={setIsDropdownOpen}
             />
 
+            {/* Theme Toggle */}
+            <button
+              onClick={toggleTheme}
+              className={`p-2 rounded-md transition-colors ${theme === 'dark' ? 'text-yellow-400 hover:bg-slate-700' : 'text-slate-600 hover:bg-gray-100'}`}
+              title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+
             <button
               onClick={() => {
                 logout().catch(err => {
@@ -485,7 +503,7 @@ const App: React.FC = () => {
                   window.location.reload();
                 });
               }}
-              className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+              className={`p-2 transition-colors ${theme === 'dark' ? 'text-slate-400 hover:text-red-400' : 'text-gray-400 hover:text-red-600'}`}
               title="Log Out"
             >
               <LogOut size={20} />
@@ -571,7 +589,7 @@ const App: React.FC = () => {
       </main>
 
       {activeTab === 'chat' && (
-        <footer className="flex-none p-4 bg-white/80 backdrop-blur-md border-t border-gray-200 absolute bottom-0 w-full z-20 animate-in slide-in-from-bottom-2">
+        <footer className={`flex-none p-4 backdrop-blur-md border-t absolute bottom-0 w-full z-20 animate-in slide-in-from-bottom-2 transition-colors duration-300 ${theme === 'dark' ? 'bg-black/90 border-slate-800' : 'bg-white/80 border-gray-200'}`}>
           <div className="max-w-3xl mx-auto">
             {messages.length < 3 && (
               <div className="flex gap-2 overflow-x-auto pb-3 mb-2 scrollbar-hide">
@@ -579,7 +597,7 @@ const App: React.FC = () => {
                   <button
                     key={i}
                     onClick={() => setInput(prompt)}
-                    className="whitespace-nowrap px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-medium text-gray-600 rounded-full transition-colors"
+                    className={`whitespace-nowrap px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${theme === 'dark' ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
                   >
                     {prompt}
                   </button>
@@ -591,7 +609,7 @@ const App: React.FC = () => {
               <button
                 onClick={handleNewChat}
                 title="Reset / New Chat"
-                className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-full transition-colors"
+                className={`p-3 rounded-md transition-colors ${theme === 'dark' ? 'text-slate-500 hover:text-slate-300 hover:bg-slate-800' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
               >
                 <Trash2 size={20} />
               </button>
@@ -604,17 +622,19 @@ const App: React.FC = () => {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={`Ask ${currentUniversity.personaName} a question...`}
-                  className="w-full pl-5 pr-12 py-3.5 bg-gray-100 border-transparent focus:bg-white focus:border-gray-300 focus:ring-0 rounded-2xl shadow-inner text-gray-800 placeholder-gray-500 transition-all"
+                  className={`w-full pl-5 pr-12 py-3.5 border-transparent focus:ring-0 rounded-md shadow-inner transition-all ${theme === 'dark' 
+                    ? 'bg-slate-800 text-white placeholder-slate-500 focus:bg-slate-700 focus:border-slate-600' 
+                    : 'bg-gray-100 text-gray-800 placeholder-gray-500 focus:bg-white focus:border-gray-300'}`}
                   disabled={isLoading}
                 />
                 <div className="absolute right-2 bottom-1.5">
                   <button
                     onClick={handleSendMessage}
                     disabled={!input.trim() || isLoading}
-                    className={`p-2 rounded-xl transition-all transform active:scale-95 ${input.trim() && !isLoading
+                    className={`p-2 rounded-md transition-all transform active:scale-95 ${input.trim() && !isLoading
                       ? `bg-${currentUniversity.themeColor} text-white shadow-md hover:opacity-90`
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      }`}
+                      : (theme === 'dark' ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-gray-200 text-gray-400 cursor-not-allowed')
+                    }`}
                   >
                     <Send size={18} />
                   </button>
@@ -622,7 +642,7 @@ const App: React.FC = () => {
               </div>
             </div>
             <div className="text-center mt-2">
-              <p className="text-[10px] text-gray-400">Powered by Google Gemini. Information may vary.</p>
+              <p className={`text-[10px] ${theme === 'dark' ? 'text-slate-500' : 'text-gray-400'}`}>Powered by Google Gemini. Information may vary.</p>
             </div>
           </div>
         </footer>

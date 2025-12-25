@@ -32,6 +32,7 @@ export interface UniversityProfile {
   themeColor: string; // Tailwind class like 'blue-600'
   secondaryColor: string; // Tailwind class like 'blue-100'
   logoEmoji: string;
+  logoPath: string; // Path to logo image
   welcomeMessage: string;
   styleGuide: string; // Specific instruction for the AI persona tone
 }
