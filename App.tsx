@@ -12,8 +12,9 @@ import GamificationPanel from './components/GamificationPanel';
 import AboutModal from './components/AboutModal';
 import EventsTab from './components/EventsTab';
 import MultiFaithTab from './components/MultiFaithTab';
+import FaqTab from './components/FaqTab';
 import AuthScreen from './components/AuthScreen';
-import { Send, GraduationCap, Info, Trash2, Trophy, Check, Star, MessageSquare, Calendar, History, Plus, ChevronDown, Heart, LogOut, Sun, Moon } from 'lucide-react';
+import { Send, GraduationCap, Info, Trash2, Trophy, Check, Star, MessageSquare, Calendar, History, Plus, ChevronDown, Heart, LogOut, Sun, Moon, HelpCircle } from 'lucide-react';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -44,7 +45,7 @@ const App: React.FC = () => {
   }, []);
 
   const [selectedUniId, setSelectedUniId] = useState<string>(DEFAULT_UNIVERSITY_ID);
-  const [activeTab, setActiveTab] = useState<'chat' | 'events' | 'multifaith'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'events' | 'multifaith' | 'faq'>('chat');
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -386,8 +387,8 @@ const App: React.FC = () => {
         <div className="max-w-4xl mx-auto flex justify-between items-center mb-3">
           <div className="flex items-center gap-2 md:gap-4">
             {/* University Logo */}
-            <img 
-              src={currentUniversity.logoPath} 
+            <img
+              src={currentUniversity.logoPath}
               alt={`${currentUniversity.shortName} logo`}
               className="w-10 h-10 object-contain"
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
@@ -413,10 +414,10 @@ const App: React.FC = () => {
               <div className="relative">
                 <button
                   onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-                  className={`flex items-center gap-1 px-2 py-1.5 rounded-md transition-all ${isHistoryOpen 
+                  className={`flex items-center gap-1 px-2 py-1.5 rounded-md transition-all ${isHistoryOpen
                     ? (theme === 'dark' ? 'bg-slate-700 text-blue-400 shadow-sm' : 'bg-white text-blue-600 shadow-sm')
                     : (theme === 'dark' ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-gray-500 hover:text-gray-800 hover:bg-white')
-                  }`}
+                    }`}
                   title="Chat History"
                 >
                   <History size={18} />
@@ -542,6 +543,16 @@ const App: React.FC = () => {
             <Heart size={16} />
             Multi-Faith Spaces
           </button>
+          <button
+            onClick={() => setActiveTab('faq')}
+            className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'faq'
+              ? `border-${currentUniversity.themeColor} text-${currentUniversity.themeColor}`
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+          >
+            <HelpCircle size={16} />
+            FAQ
+          </button>
         </div>
       </header>
 
@@ -585,6 +596,10 @@ const App: React.FC = () => {
             <MultiFaithTab spaces={currentCampusData.multiFaithSpaces} university={currentUniversity} />
           )}
 
+          {activeTab === 'faq' && (
+            <FaqTab faq={currentCampusData.faq} university={currentUniversity} />
+          )}
+
         </div>
       </main>
 
@@ -622,8 +637,8 @@ const App: React.FC = () => {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={`Ask ${currentUniversity.personaName} a question...`}
-                  className={`w-full pl-5 pr-12 py-3.5 border-transparent focus:ring-0 rounded-md shadow-inner transition-all ${theme === 'dark' 
-                    ? 'bg-slate-800 text-white placeholder-slate-500 focus:bg-slate-700 focus:border-slate-600' 
+                  className={`w-full pl-5 pr-12 py-3.5 border-transparent focus:ring-0 rounded-md shadow-inner transition-all ${theme === 'dark'
+                    ? 'bg-slate-800 text-white placeholder-slate-500 focus:bg-slate-700 focus:border-slate-600'
                     : 'bg-gray-100 text-gray-800 placeholder-gray-500 focus:bg-white focus:border-gray-300'}`}
                   disabled={isLoading}
                 />
@@ -634,7 +649,7 @@ const App: React.FC = () => {
                     className={`p-2 rounded-md transition-all transform active:scale-95 ${input.trim() && !isLoading
                       ? `bg-${currentUniversity.themeColor} text-white shadow-md hover:opacity-90`
                       : (theme === 'dark' ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-gray-200 text-gray-400 cursor-not-allowed')
-                    }`}
+                      }`}
                   >
                     <Send size={18} />
                   </button>
