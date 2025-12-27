@@ -51,6 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   currentUniversity
 }) => {
   const [isUniDropdownOpen, setIsUniDropdownOpen] = React.useState(false);
+  const [isLogoutPopupOpen, setIsLogoutPopupOpen] = React.useState(false);
   const selectedUni = universities.find(u => u.id === selectedUniId) || universities[0];
 
   const formatDate = (isoString: string) => {
@@ -270,7 +271,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {!isOpen && <div className="flex-1"></div>}
 
       {/* User Profile at Bottom */}
-      <div className={`p-2 border-t border-white/10 ${isOpen ? '' : 'flex justify-center'}`}>
+      <div className={`p-2 border-t border-white/10 ${isOpen ? '' : 'flex justify-center relative'}`}>
         {isOpen ? (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
@@ -291,15 +292,30 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </div>
         ) : (
-          /* Collapsed: Just user initial */
-          <div className="flex flex-col items-center gap-2">
+          /* Collapsed: User initial with logout popup */
+          <div className="relative">
             <button
-              onClick={onLogout}
+              onClick={() => setIsLogoutPopupOpen(!isLogoutPopupOpen)}
               className="w-8 h-8 rounded-md bg-purple-600 flex items-center justify-center text-white font-bold text-sm hover:bg-purple-500 transition-colors"
-              title={`${userName} - Click to logout`}
+              title={userName}
             >
               {userName.charAt(0).toUpperCase()}
             </button>
+            
+            {isLogoutPopupOpen && (
+              <div className="absolute bottom-full left-0 mb-2 w-32 bg-black/95 backdrop-blur-xl rounded-md border border-white/20 overflow-hidden shadow-xl z-50">
+                <button
+                  onClick={() => {
+                    setIsLogoutPopupOpen(false);
+                    onLogout();
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/10 transition-colors"
+                >
+                  <LogOut size={14} />
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

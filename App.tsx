@@ -430,15 +430,7 @@ const App: React.FC = () => {
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
               {!isSidebarOpen && (
-                <div className="flex items-center gap-2">
-                  <img 
-                    src={currentUniversity.logoPath} 
-                    alt={currentUniversity.shortName}
-                    className="w-8 h-8 object-contain"
-                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                  />
-                  <span className="text-lg font-bold text-white">UniPilot</span>
-                </div>
+                <span className="text-lg font-bold text-white">UniPilot</span>
               )}
             </div>
             <div className="flex items-center gap-3">
@@ -475,14 +467,17 @@ const App: React.FC = () => {
               {isLoading && (
                 <div className="flex w-full justify-start mb-6 animate-pulse">
                   <div className="flex flex-row items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full bg-${currentUniversity.themeColor} flex items-center justify-center text-white opacity-50`}>
-                      <span className="text-sm">{currentUniversity.logoEmoji}</span>
-                    </div>
-                    <div className="bg-white border border-gray-100 px-5 py-4 rounded-2xl rounded-tl-none shadow-sm">
+                    <img 
+                      src={currentUniversity.logoPath}
+                      alt={currentUniversity.shortName}
+                      className="w-8 h-8 rounded-md object-contain opacity-70"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                    <div className="bg-black/70 backdrop-blur-xl border border-white/25 px-5 py-4 rounded-md shadow-lg">
                       <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                        <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                        <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                        <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                       </div>
                     </div>
                   </div>
@@ -511,7 +506,7 @@ const App: React.FC = () => {
         <footer className="flex-none p-4 bg-gradient-to-t from-black/40 to-transparent z-20 animate-in slide-in-from-bottom-2">
           <div className="max-w-3xl mx-auto">
             {/* Always show suggested prompts */}
-            <div className="flex gap-2 overflow-x-auto pb-3 mb-2 scrollbar-hide">
+            <div className="flex gap-2 overflow-x-auto pb-3 mb-2 scrollbar-hide ml-14">
               {quickPrompts.map((prompt, i) => (
                 <button
                   key={i}
