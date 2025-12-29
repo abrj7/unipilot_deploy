@@ -332,7 +332,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="relative">
             <button
               onClick={() => setIsLogoutPopupOpen(!isLogoutPopupOpen)}
-              className="w-8 h-8 rounded-md bg-purple-600 flex items-center justify-center text-white font-bold text-sm hover:bg-purple-500 transition-colors"
+              className="w-8 h-8 rounded-md flex items-center justify-center text-white font-bold text-sm hover:opacity-80 transition-opacity"
+              style={{ backgroundColor: getAvatarColor(userUniProfile?.id) }}
               title={userName}
             >
               {userName.charAt(0).toUpperCase()}

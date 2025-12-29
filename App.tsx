@@ -98,7 +98,8 @@ const App: React.FC = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  // Sidebar collapsed by default on mobile (< 768px)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
   const [userEmail, setUserEmail] = useState<string>('');
   const [userUniversity, setUserUniversity] = useState<string>('');
 
@@ -123,6 +124,18 @@ const App: React.FC = () => {
   };
 
   const currentCampusData = getCampusData(selectedUniId);
+
+  // Handle window resize for responsive sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setIsSidebarOpen(false);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Load basic data on login
   useEffect(() => {
@@ -178,14 +191,23 @@ const App: React.FC = () => {
           setSessions(hydratedSessions);
 
           // Select current university session if exists
-          // If we loaded a profile, prefer that ID, otherwise use default/current
-          const targetUniId = (profile?.selected_university_id) || selectedUniId;
+          // Priority: 1. Auth metadata, 2. Profile table, 3. Default
+          const targetUniId = universityFromAuth || profile?.selected_university_id || selectedUniId;
+          const targetUniversity = UNIVERSITIES.find(u => u.id === targetUniId) || UNIVERSITIES[0];
 
           const currentUniSessions = hydratedSessions.filter(s => s.universityId === targetUniId);
           if (currentUniSessions.length > 0) {
             const latest = currentUniSessions[0];
             setCurrentSessionId(latest.id);
             setMessages(latest.messages);
+          } else {
+            // No sessions - set welcome message with the correct university
+            setMessages([{
+              id: generateId(),
+              text: targetUniversity.welcomeMessage,
+              sender: Sender.AI,
+              timestamp: new Date()
+            }]);
           }
         } catch (error) {
           console.error("Error loading user data:", error);
@@ -572,7 +594,7 @@ const App: React.FC = () => {
         className="flex-1 overflow-y-auto relative scrollbar-hide z-10"
         onClick={() => { setIsDropdownOpen(false); setIsHistoryOpen(false); }}
       >
-        <div className="max-w-3xl mx-auto px-4 py-4 pb-4">
+        <div className="max-w-3xl mx-auto px-2 sm:px-4 py-4 pb-4">
 
           {activeTab === 'chat' && (
             <>
