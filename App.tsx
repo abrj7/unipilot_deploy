@@ -4,7 +4,7 @@ import { Message, Sender, UserStats, ChatSession } from './types';
 import { generateResponse } from './services/geminiService';
 import { getUserStats, processUserInteraction, generateUserContextSummary } from './services/statsService';
 import { getChatSessions, createChatSession, addMessage, deleteChatSession } from './services/chatService';
-import { isAuthenticated, logout, getUserProfile, getCurrentUser } from './services/authService';
+import { isAuthenticated, logout, getUserProfile, getCurrentUser, isAwaitingEmailConfirmation } from './services/authService';
 import { DATA_UW, DATA_UOFT, DATA_MAC, DATA_WESTERN, DATA_QUEENS, DATA_TMU } from './services/campusData';
 import UniversitySelector from './components/UniversitySelector';
 import MessageBubble from './components/MessageBubble';
@@ -13,16 +13,46 @@ import AboutModal from './components/AboutModal';
 import EventsTab from './components/EventsTab';
 import MultiFaithTab from './components/MultiFaithTab';
 import FaqTab from './components/FaqTab';
+import CampusMapTab from './components/CampusMapTab';
 import AuthScreen from './components/AuthScreen';
 import Aurora from './components/Aurora';
 import Sidebar from './components/Sidebar';
-import { Send, GraduationCap, Info, Trash2, Trophy, Check, Star, MessageSquare, Calendar, History, Plus, ChevronDown, Heart, LogOut, HelpCircle } from 'lucide-react';
+import { Send, GraduationCap, Info, Trash2, Trophy, Check, Star, MessageSquare, Calendar, History, Plus, ChevronDown, Heart, LogOut, HelpCircle, MapPin } from 'lucide-react';
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
+
+// LocalStorage helpers for map locations (not stored in Supabase)
+const MAP_LOCATIONS_KEY = 'unipilot_map_locations';
+
+const saveMapLocation = (messageId: string, mapLocation: { lat: number; lng: number; name: string }) => {
+  try {
+    const stored = localStorage.getItem(MAP_LOCATIONS_KEY);
+    const locations = stored ? JSON.parse(stored) : {};
+    locations[messageId] = mapLocation;
+    localStorage.setItem(MAP_LOCATIONS_KEY, JSON.stringify(locations));
+  } catch (e) {
+    console.error('Failed to save map location:', e);
+  }
+};
+
+const getMapLocations = (): Record<string, { lat: number; lng: number; name: string }> => {
+  try {
+    const stored = localStorage.getItem(MAP_LOCATIONS_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch (e) {
+    console.error('Failed to load map locations:', e);
+    return {};
+  }
+};
+
+const getMapLocation = (messageId: string): { lat: number; lng: number; name: string } | undefined => {
+  return getMapLocations()[messageId];
+};
 
 const App: React.FC = () => {
   // console.log("App component is initializing...");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
 
   // Initial stats state
@@ -37,16 +67,25 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      // Always check Supabase auth since chat services require it
+      // Check if fully authenticated (email confirmed)
       const authenticated = await isAuthenticated();
       setIsLoggedIn(authenticated);
+
+      // Check if awaiting email confirmation
+      if (!authenticated) {
+        const awaitingEmail = await isAwaitingEmailConfirmation();
+        setAwaitingConfirmation(awaitingEmail);
+      } else {
+        setAwaitingConfirmation(false);
+      }
+
       setAuthLoading(false);
     };
     checkAuth();
   }, []);
 
   const [selectedUniId, setSelectedUniId] = useState<string>(DEFAULT_UNIVERSITY_ID);
-  const [activeTab, setActiveTab] = useState<'chat' | 'events' | 'multifaith' | 'faq'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'events' | 'multifaith' | 'faq' | 'map'>('chat');
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -59,7 +98,8 @@ const App: React.FC = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  // Sidebar collapsed by default on mobile (< 768px)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
   const [userEmail, setUserEmail] = useState<string>('');
   const [userUniversity, setUserUniversity] = useState<string>('');
 
@@ -85,6 +125,18 @@ const App: React.FC = () => {
 
   const currentCampusData = getCampusData(selectedUniId);
 
+  // Handle window resize for responsive sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setIsSidebarOpen(false);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Load basic data on login
   useEffect(() => {
     if (isLoggedIn) {
@@ -99,18 +151,24 @@ const App: React.FC = () => {
             setUserEmail(currentUser.email);
           }
 
+          // Get university from auth metadata first (most reliable)
+          let universityFromAuth = currentUser?.user_metadata?.selected_university;
+          
           // Load User Profile for preferred university
           let profile = null;
           if (USE_BACKEND) {
             profile = await getUserProfile();
-            if (profile && profile.selected_university_id) {
-              setSelectedUniId(profile.selected_university_id);
-              prevUniIdRef.current = profile.selected_university_id;
-              // Find and set the user's signup university name
-              const signupUni = UNIVERSITIES.find(u => u.id === profile.selected_university_id);
-              if (signupUni) {
-                setUserUniversity(signupUni.name);
-              }
+            
+            // Priority: 1. Auth metadata, 2. Profile table, 3. Default
+            const universityId = universityFromAuth || profile?.selected_university_id || DEFAULT_UNIVERSITY_ID;
+            
+            setSelectedUniId(universityId);
+            prevUniIdRef.current = universityId;
+            
+            // Find and set the user's signup university name
+            const signupUni = UNIVERSITIES.find(u => u.id === universityId);
+            if (signupUni) {
+              setUserUniversity(signupUni.name);
             }
           }
 
@@ -133,14 +191,23 @@ const App: React.FC = () => {
           setSessions(hydratedSessions);
 
           // Select current university session if exists
-          // If we loaded a profile, prefer that ID, otherwise use default/current
-          const targetUniId = (profile?.selected_university_id) || selectedUniId;
+          // Priority: 1. Auth metadata, 2. Profile table, 3. Default
+          const targetUniId = universityFromAuth || profile?.selected_university_id || selectedUniId;
+          const targetUniversity = UNIVERSITIES.find(u => u.id === targetUniId) || UNIVERSITIES[0];
 
           const currentUniSessions = hydratedSessions.filter(s => s.universityId === targetUniId);
           if (currentUniSessions.length > 0) {
             const latest = currentUniSessions[0];
             setCurrentSessionId(latest.id);
             setMessages(latest.messages);
+          } else {
+            // No sessions - set welcome message with the correct university
+            setMessages([{
+              id: generateId(),
+              text: targetUniversity.welcomeMessage,
+              sender: Sender.AI,
+              timestamp: new Date()
+            }]);
           }
         } catch (error) {
           console.error("Error loading user data:", error);
@@ -216,7 +283,13 @@ const App: React.FC = () => {
 
   const handleLoadSession = (session: ChatSession) => {
     setCurrentSessionId(session.id);
-    setMessages(session.messages);
+    // Restore map locations from localStorage for each message
+    const mapLocations = getMapLocations();
+    const messagesWithMaps = session.messages.map(msg => ({
+      ...msg,
+      mapLocation: mapLocations[msg.id] || msg.mapLocation
+    }));
+    setMessages(messagesWithMaps);
     setSelectedUniId(session.universityId);
     prevUniIdRef.current = session.universityId;
     setIsHistoryOpen(false);
@@ -314,13 +387,20 @@ const App: React.FC = () => {
         savedAiMessage = await addMessage(activeSessionId, text, Sender.AI);
       }
 
+      const aiMessageId = savedAiMessage?.id || generateId();
+
       const newAiMessage: Message = {
-        id: savedAiMessage?.id || generateId(),
+        id: aiMessageId,
         text: text,
         sender: Sender.AI,
         timestamp: new Date(),
         mapLocation: mapLocation
       };
+
+      // Save map location to localStorage for persistence
+      if (mapLocation) {
+        saveMapLocation(aiMessageId, mapLocation);
+      }
 
       const finalMessages = [...updatedMessages, newAiMessage];
       setMessages(finalMessages);
@@ -380,8 +460,56 @@ const App: React.FC = () => {
     </div>;
   }
 
+  // Show confirmation pending screen for users who signed up but haven't confirmed email
+  if (awaitingConfirmation) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black p-4 relative" style={{ fontFamily: "'Montserrat', sans-serif" }}>
+        <Aurora
+          colorStops={["#3A29FF", "#FF94B4", "#FF3232"]}
+          blend={0.5}
+          amplitude={1.0}
+          speed={0.5}
+        />
+        <div className="bg-black/60 backdrop-blur-xl w-full max-w-md p-8 rounded-md shadow-xl border border-white/20 relative z-10 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-500 text-white rounded-full mb-4 shadow-lg">
+            <span className="text-3xl">📧</span>
+          </div>
+          <h1 className="text-2xl font-bold text-white mb-2">Check Your Email</h1>
+          <p className="text-white/70 mb-6">
+            We've sent a confirmation link to your email address. Please click the link to verify your account before continuing.
+          </p>
+          <div className="bg-white/10 rounded-md p-4 mb-6">
+            <p className="text-white/50 text-sm">
+              Didn't receive the email? Check your spam folder or try signing up again with a different email.
+            </p>
+          </div>
+          <button
+            onClick={async () => {
+              await logout();
+              setAwaitingConfirmation(false);
+              setIsLoggedIn(false);
+            }}
+            className="w-full py-3 bg-white/10 hover:bg-white/20 text-white rounded-md transition-all font-medium"
+          >
+            Back to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!isLoggedIn) {
-    return <AuthScreen onAuthSuccess={() => setIsLoggedIn(true)} />;
+    return <AuthScreen onAuthSuccess={async () => {
+      // Re-check auth state after signup/login
+      const authenticated = await isAuthenticated();
+      if (authenticated) {
+        setIsLoggedIn(true);
+        setAwaitingConfirmation(false);
+      } else {
+        const awaitingEmail = await isAwaitingEmailConfirmation();
+        setAwaitingConfirmation(awaitingEmail);
+      }
+    }} />;
   }
 
   return (
@@ -462,11 +590,11 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <main
-          className="flex-1 overflow-y-auto relative scrollbar-hide z-10"
-          onClick={() => { setIsDropdownOpen(false); setIsHistoryOpen(false); }}
-        >
-          <div className="max-w-3xl mx-auto px-4 py-4 pb-4">
+      <main
+        className="flex-1 overflow-y-auto relative scrollbar-hide z-10"
+        onClick={() => { setIsDropdownOpen(false); setIsHistoryOpen(false); }}
+      >
+        <div className="max-w-3xl mx-auto px-2 sm:px-4 py-4 pb-4">
 
           {activeTab === 'chat' && (
             <>
@@ -507,6 +635,10 @@ const App: React.FC = () => {
 
           {activeTab === 'faq' && (
             <FaqTab faq={currentCampusData.faq} university={currentUniversity} />
+          )}
+
+          {activeTab === 'map' && (
+            <CampusMapTab university={currentUniversity} />
           )}
 
         </div>
@@ -564,7 +696,29 @@ const App: React.FC = () => {
               </div>
             </div>
             <div className="text-center mt-3">
-              <p className="text-xs text-white/60 font-medium">Powered by Google Gemini. Information may vary.</p>
+              <p className="text-xs text-white/40">
+                Created by{' '}
+                <span className="relative inline-block group">
+                  <a href="https://linkedin.com/in/abdullahrajput1" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 transition-colors">@abrj7</a>
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-black/90 backdrop-blur-xl border border-white/20 rounded-md text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto whitespace-nowrap shadow-xl z-50">
+                    <a href="https://github.com/abrj7" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                      github.com/abrj7
+                    </a>
+                  </span>
+                </span>
+                {' '}&{' '}
+                <span className="relative inline-block group">
+                  <a href="https://www.linkedin.com/in/ali-intelligence/" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 transition-colors">@neanicc</a>
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-black/90 backdrop-blur-xl border border-white/20 rounded-md text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto whitespace-nowrap shadow-xl z-50">
+                    <a href="https://github.com/neanicc" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                      github.com/neanicc
+                    </a>
+                  </span>
+                </span>
+                . All rights reserved.
+              </p>
             </div>
           </div>
         </footer>

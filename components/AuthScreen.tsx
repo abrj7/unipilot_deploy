@@ -1,8 +1,17 @@
 
 import React, { useState } from 'react';
 import { login, register } from '../services/authService';
-import { GraduationCap, ArrowRight, Loader2 } from 'lucide-react';
+import { GraduationCap, ArrowRight, Loader2, Mail, ArrowLeft, Lock, User, ChevronDown } from 'lucide-react';
 import Aurora from './Aurora';
+
+const UNIVERSITIES = [
+  { id: 'uw', name: 'University of Waterloo', logo: '/logos/uw.png' },
+  { id: 'uoft', name: 'University of Toronto', logo: '/logos/uoft.png' },
+  { id: 'mac', name: 'McMaster University', logo: '/logos/mac.png' },
+  { id: 'western', name: 'Western University', logo: '/logos/western.png' },
+  { id: 'queens', name: "Queen's University", logo: '/logos/queens.png' },
+  { id: 'tmu', name: 'Toronto Metropolitan University', logo: '/logos/tmu.png' },
+];
 
 interface Props {
   onAuthSuccess: () => void;
@@ -16,6 +25,10 @@ const AuthScreen: React.FC<Props> = ({ onAuthSuccess }) => {
   const [universityId, setUniversityId] = useState('uw');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [signupSuccess, setSignupSuccess] = useState(false);
+  const [isUniDropdownOpen, setIsUniDropdownOpen] = useState(false);
+
+  const selectedUni = UNIVERSITIES.find(u => u.id === universityId) || UNIVERSITIES[0];
 
   const validatePassword = (pwd: string) => {
     // At least 8 chars, 1 uppercase, 1 lowercase, 1 special char
@@ -43,16 +56,74 @@ const AuthScreen: React.FC<Props> = ({ onAuthSuccess }) => {
     try {
       if (isLogin) {
         await login(email, password);
+        onAuthSuccess();
       } else {
+        console.log('AuthScreen calling register with universityId:', universityId);
         await register(email, password, name, universityId);
+        // Show success screen for signup
+        setSignupSuccess(true);
       }
-      onAuthSuccess();
     } catch (err: any) {
       setError(err.message || 'Something went wrong');
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleBackToLogin = () => {
+    setSignupSuccess(false);
+    setIsLogin(true);
+    setEmail('');
+    setPassword('');
+    setName('');
+    setError('');
+  };
+
+  // Show success screen after signup
+  if (signupSuccess) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black p-4 relative" style={{ fontFamily: "'Montserrat', sans-serif" }}>
+        <Aurora
+          colorStops={["#3A29FF", "#FF94B4", "#FF3232"]}
+          blend={0.5}
+          amplitude={1.0}
+          speed={0.5}
+        />
+        <div className="bg-black/60 backdrop-blur-xl w-full max-w-md p-8 rounded-md shadow-xl border border-white/20 relative z-10 text-center animate-in fade-in zoom-in-95 duration-300">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-green-500 text-white rounded-full mb-6 shadow-lg">
+            <Mail size={40} />
+          </div>
+          <h1 className="text-2xl font-bold text-white mb-3">Check Your Email!</h1>
+          <p className="text-white/70 mb-2">
+            We've sent a confirmation link to:
+          </p>
+          <p className="text-white font-semibold mb-6 bg-white/10 rounded-md py-2 px-4 inline-block">
+            {email}
+          </p>
+          <div className="bg-white/5 rounded-md p-4 mb-6 text-left">
+            <p className="text-white/60 text-sm mb-2">
+              <strong className="text-white/80">Next steps:</strong>
+            </p>
+            <ol className="text-white/60 text-sm space-y-1 list-decimal list-inside">
+              <li>Open the email from UniPilot</li>
+              <li>Click the confirmation link</li>
+              <li>Come back and log in!</li>
+            </ol>
+          </div>
+          <p className="text-white/40 text-xs mb-6">
+            Didn't receive it? Check your spam folder.
+          </p>
+          <button
+            onClick={handleBackToLogin}
+            className="w-full py-3 bg-white/10 hover:bg-white/20 text-white rounded-md transition-all font-medium flex items-center justify-center gap-2"
+          >
+            <ArrowLeft size={18} />
+            Back to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-black p-4 relative" style={{ fontFamily: "'Montserrat', sans-serif" }}>
@@ -98,57 +169,99 @@ const AuthScreen: React.FC<Props> = ({ onAuthSuccess }) => {
           {!isLogin && (
             <div>
               <label className="block text-sm font-medium text-white/80 mb-1">Full Name</label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-white placeholder-white/40"
-                placeholder="John Doe"
-              />
+              <div className="relative">
+                <User size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-white/10 border border-white/20 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-white placeholder-white/40"
+                  placeholder="John Doe"
+                />
+              </div>
             </div>
           )}
 
           <div>
             <label className="block text-sm font-medium text-white/80 mb-1">Email Address</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-white placeholder-white/40"
-              placeholder="student@university.edu"
-            />
+            <div className="relative">
+              <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white/10 border border-white/20 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-white placeholder-white/40"
+                placeholder="student@university.edu"
+              />
+            </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-white/80 mb-1">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-white placeholder-white/40"
-              placeholder="••••••••"
-            />
+            <div className="relative">
+              <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white/10 border border-white/20 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-white placeholder-white/40"
+                placeholder="••••••••"
+              />
+            </div>
             {!isLogin && <p className="text-xs text-white/40 mt-1">Min 8 chars, Upper, Lower, Special (!@#$)</p>}
           </div>
 
           {!isLogin && (
             <div>
               <label className="block text-sm font-medium text-white/80 mb-1">Select University</label>
-              <select
-                value={universityId}
-                onChange={(e) => setUniversityId(e.target.value)}
-                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-white"
-              >
-                <option value="uw" className="bg-black text-white">University of Waterloo</option>
-                <option value="uoft" className="bg-black text-white">University of Toronto</option>
-                <option value="mac" className="bg-black text-white">McMaster University</option>
-                <option value="western" className="bg-black text-white">Western University</option>
-                <option value="queens" className="bg-black text-white">Queen's University</option>
-                <option value="tmu" className="bg-black text-white">Toronto Metropolitan U</option>
-              </select>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsUniDropdownOpen(!isUniDropdownOpen)}
+                  className="w-full px-4 py-2.5 bg-white/10 border border-white/20 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-white flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <img 
+                      src={selectedUni.logo} 
+                      alt={selectedUni.name}
+                      className="w-6 h-6 object-contain"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                    <span className="text-sm">{selectedUni.name}</span>
+                  </div>
+                  <ChevronDown size={18} className={`text-white/60 transition-transform ${isUniDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                
+                {isUniDropdownOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-black/95 backdrop-blur-xl rounded-md border border-white/20 overflow-hidden z-50 shadow-xl">
+                    {UNIVERSITIES.map(uni => (
+                      <button
+                        key={uni.id}
+                        type="button"
+                        onClick={() => {
+                          console.log('Dropdown selected:', uni.id);
+                          setUniversityId(uni.id);
+                          setIsUniDropdownOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/10 transition-colors ${
+                          universityId === uni.id ? 'bg-white/15' : ''
+                        }`}
+                      >
+                        <img 
+                          src={uni.logo} 
+                          alt={uni.name}
+                          className="w-6 h-6 object-contain"
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        />
+                        <span className="text-sm text-white">{uni.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -167,6 +280,30 @@ const AuthScreen: React.FC<Props> = ({ onAuthSuccess }) => {
             </span>
           </button>
         </form>
+        
+        <p className="text-xs text-white/40 text-center mt-6">
+          Created by{' '}
+          <span className="relative inline-block group">
+            <a href="https://linkedin.com/in/abdullahrajput1" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 transition-colors">@abrj7</a>
+            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-black/90 backdrop-blur-xl border border-white/20 rounded-md text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto whitespace-nowrap shadow-xl z-50">
+              <a href="https://github.com/abrj7" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                github.com/abrj7
+              </a>
+            </span>
+          </span>
+          {' '}&{' '}
+          <span className="relative inline-block group">
+            <a href="https://www.linkedin.com/in/ali-intelligence/" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 transition-colors">@neanicc</a>
+            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-black/90 backdrop-blur-xl border border-white/20 rounded-md text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto whitespace-nowrap shadow-xl z-50">
+              <a href="https://github.com/neanicc" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                github.com/neanicc
+              </a>
+            </span>
+          </span>
+          . All rights reserved.
+        </p>
       </div>
     </div>
   );

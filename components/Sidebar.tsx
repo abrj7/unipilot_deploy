@@ -11,7 +11,8 @@ import {
   ChevronDown,
   HelpCircle,
   PanelLeftOpen,
-  PanelLeftClose
+  PanelLeftClose,
+  MapPin
 } from 'lucide-react';
 import { UniversityProfile, ChatSession } from '../types';
 
@@ -54,7 +55,23 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [isUniDropdownOpen, setIsUniDropdownOpen] = React.useState(false);
   const [isLogoutPopupOpen, setIsLogoutPopupOpen] = React.useState(false);
+  
+  // Get the user's signup university profile for the avatar color
+  const userUniProfile = universities.find(u => u.name === userUniversity || u.shortName === userUniversity);
   const selectedUni = universities.find(u => u.id === selectedUniId) || universities[0];
+  
+  // University avatar colors (vibrant, solid colors for avatars)
+  const getAvatarColor = (uniId?: string) => {
+    const colors: Record<string, string> = {
+      'uw': '#FACE68',      // Waterloo gold
+      'uoft': '#4988C4',    // UofT blue
+      'mac': '#5A0E24',     // McMaster maroon
+      'western': '#62109F', // Western purple
+      'queens': '#BF092F',  // Queen's red
+      'tmu': '#0046FF',     // TMU blue
+    };
+    return colors[uniId || ''] || '#9333ea'; // fallback purple
+  };
 
   const formatDate = (isoString: string) => {
     const date = new Date(isoString);
@@ -231,6 +248,20 @@ const Sidebar: React.FC<SidebarProps> = ({
           <HelpCircle size={16} />
           {isOpen && 'FAQ'}
         </button>
+        <button
+          onClick={() => setActiveTab('map')}
+          className={`flex items-center gap-2 rounded-md text-sm font-medium transition-colors ${
+            isOpen ? 'w-full px-3 py-2' : 'p-2.5'
+          } ${
+            activeTab === 'map' 
+              ? 'bg-white/15 text-white' 
+              : 'text-white/60 hover:text-white hover:bg-white/10'
+          }`}
+          title="Campus Map"
+        >
+          <MapPin size={16} />
+          {isOpen && 'Campus Map'}
+        </button>
       </div>
 
       {/* Divider */}
@@ -277,7 +308,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         {isOpen ? (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-8 h-8 rounded-md bg-purple-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+              <div 
+                className="w-8 h-8 rounded-md flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                style={{ backgroundColor: getAvatarColor(userUniProfile?.id) }}
+              >
                 {userName.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
@@ -298,7 +332,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="relative">
             <button
               onClick={() => setIsLogoutPopupOpen(!isLogoutPopupOpen)}
-              className="w-8 h-8 rounded-md bg-purple-600 flex items-center justify-center text-white font-bold text-sm hover:bg-purple-500 transition-colors"
+              className="w-8 h-8 rounded-md flex items-center justify-center text-white font-bold text-sm hover:opacity-80 transition-opacity"
+              style={{ backgroundColor: getAvatarColor(userUniProfile?.id) }}
               title={userName}
             >
               {userName.charAt(0).toUpperCase()}

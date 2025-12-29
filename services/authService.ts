@@ -7,12 +7,15 @@ import { Session, AuthChangeEvent } from '@supabase/supabase-js';
  * Register a new user with email, password, name, and university
  */
 export const register = async (email: string, password: string, name: string, universityId: string) => {
+  console.log('Registering user with university:', universityId);
+  
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: {
         full_name: name,
+        selected_university: universityId, // Store in auth metadata (reliable, no RLS issues)
       },
     },
   });
@@ -21,18 +24,17 @@ export const register = async (email: string, password: string, name: string, un
     throw new Error(error.message);
   }
 
-  // Update public profile with selected university
-  if (data.user) {
-    const { error: profileError } = await supabase
-      .from('users')
-      .update({ selected_university_id: universityId })
-      .eq('id', data.user.id);
-
-    if (profileError) {
-      console.error('Error updating user profile:', profileError);
-      // Don't throw here, as auth was successful
-    }
+  // Check if email already exists - Supabase returns user with empty identities array
+  // This is a security feature to prevent email enumeration, but we can detect it
+  if (data.user && data.user.identities && data.user.identities.length === 0) {
+    throw new Error('An account already exists with this email. Please log in instead.');
   }
+
+  // Note: The university is stored in auth metadata (user_metadata.selected_university)
+  // This bypasses RLS issues with the public.users table
+  // The App.tsx loadData function reads from metadata first
+  
+  console.log('User registered successfully, university stored in metadata:', universityId);
 
   return data;
 };
@@ -116,11 +118,32 @@ export const getCurrentUser = async () => {
 };
 
 /**
- * Check if user is authenticated
+ * Check if user is authenticated AND has confirmed their email
  */
 export const isAuthenticated = async (): Promise<boolean> => {
   const session = await getSession();
-  return !!session;
+  if (!session) return false;
+
+  // Check if email is confirmed
+  const user = await getCurrentUser();
+  if (!user) return false;
+
+  // email_confirmed_at is null if not confirmed
+  return !!user.email_confirmed_at;
+};
+
+/**
+ * Check if user has a session but hasn't confirmed email yet
+ */
+export const isAwaitingEmailConfirmation = async (): Promise<boolean> => {
+  const session = await getSession();
+  if (!session) return false;
+
+  const user = await getCurrentUser();
+  if (!user) return false;
+
+  // Has session but no email confirmation
+  return !user.email_confirmed_at;
 };
 
 /**
