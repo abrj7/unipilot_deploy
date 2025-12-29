@@ -28,8 +28,8 @@ const AboutModal: React.FC<Props> = ({ isOpen, onClose }) => {
         {/* Content */}
         <div className="p-6 overflow-y-auto">
           <p className="text-white/70 text-lg mb-8 leading-relaxed">
-            Campus Companion is your intelligent, interactive guide to university life. 
-            Forget searching through outdated wikis or endless Reddit threads—get instant, accurate answers about your specific campus.
+            Campus Companion is your intelligent, interactive guide to university life, trained on YOUR universities data. 
+            Forget searching through outdated wikis or endless Reddit threads get instant, accurate answers about your specific campus.
           </p>
 
           <div className="grid md:grid-cols-2 gap-4 mb-8">
@@ -80,14 +80,6 @@ const AboutModal: React.FC<Props> = ({ isOpen, onClose }) => {
                     <h3 className="font-bold text-white">Campus Maps</h3>
                 </div>
                 <p className="text-sm text-white/60">Explore interactive campus maps with buildings, food spots, libraries, and key landmarks marked for easy navigation.</p>
-             </div>
-
-             <div className="p-4 bg-purple-500/10 rounded-md border border-purple-500/30 md:col-span-2">
-                <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-purple-500/20 rounded-md text-purple-400"><Zap size={20} /></div>
-                    <h3 className="font-bold text-white">Study Buddy</h3>
-                </div>
-                <p className="text-sm text-white/60">The AI adapts to your habits, offering personalized study tips based on your interaction history.</p>
              </div>
           </div>
 
