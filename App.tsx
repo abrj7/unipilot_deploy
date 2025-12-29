@@ -562,59 +562,6 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <div className="max-w-4xl mx-auto flex gap-6 px-2 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('chat')}
-            className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'chat'
-              ? 'border-white text-white'
-              : 'border-transparent text-white/50 hover:text-white/80'
-              }`}
-          >
-            <MessageSquare size={16} />
-            Chat Assistant
-          </button>
-          <button
-            onClick={() => setActiveTab('events')}
-            className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'events'
-              ? 'border-white text-white'
-              : 'border-transparent text-white/50 hover:text-white/80'
-              }`}
-          >
-            <Calendar size={16} />
-            Campus Events
-          </button>
-          <button
-            onClick={() => setActiveTab('multifaith')}
-            className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'multifaith'
-              ? 'border-white text-white'
-              : 'border-transparent text-white/50 hover:text-white/80'
-              }`}
-          >
-            <Heart size={16} />
-            Multi-Faith Spaces
-          </button>
-          <button
-            onClick={() => setActiveTab('faq')}
-            className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'faq'
-              ? 'border-white text-white'
-              : 'border-transparent text-white/50 hover:text-white/80'
-              }`}
-          >
-            <HelpCircle size={16} />
-            FAQ
-          </button>
-          <button
-            onClick={() => setActiveTab('map')}
-            className={`pb-2 text-sm font-medium border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'map'
-              ? 'border-white text-white'
-              : 'border-transparent text-white/50 hover:text-white/80'
-              }`}
-          >
-            <MapPin size={16} />
-            Map
-          </button>
-        </div>
-
       <main
         className="flex-1 overflow-y-auto relative scrollbar-hide z-10"
         onClick={() => { setIsDropdownOpen(false); setIsHistoryOpen(false); }}
