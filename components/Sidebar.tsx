@@ -59,6 +59,19 @@ const Sidebar: React.FC<SidebarProps> = ({
   // Get the user's signup university profile for the avatar color
   const userUniProfile = universities.find(u => u.name === userUniversity || u.shortName === userUniversity);
   const selectedUni = universities.find(u => u.id === selectedUniId) || universities[0];
+  
+  // University avatar colors (vibrant, solid colors for avatars)
+  const getAvatarColor = (uniId?: string) => {
+    const colors: Record<string, string> = {
+      'uw': '#FACE68',      // Waterloo gold
+      'uoft': '#4988C4',    // UofT blue
+      'mac': '#5A0E24',     // McMaster maroon
+      'western': '#62109F', // Western purple
+      'queens': '#BF092F',  // Queen's red
+      'tmu': '#0046FF',     // TMU blue
+    };
+    return colors[uniId || ''] || '#9333ea'; // fallback purple
+  };
 
   const formatDate = (isoString: string) => {
     const date = new Date(isoString);
@@ -297,7 +310,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex items-center gap-2 min-w-0">
               <div 
                 className="w-8 h-8 rounded-md flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
-                style={{ backgroundColor: userUniProfile?.auroraColors?.[0] || '#9333ea' }}
+                style={{ backgroundColor: getAvatarColor(userUniProfile?.id) }}
               >
                 {userName.charAt(0).toUpperCase()}
               </div>
