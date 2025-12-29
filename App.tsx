@@ -4,8 +4,7 @@ import { Message, Sender, UserStats, ChatSession } from './types';
 import { generateResponse } from './services/geminiService';
 import { getUserStats, processUserInteraction, generateUserContextSummary } from './services/statsService';
 import { getChatSessions, createChatSession, addMessage, deleteChatSession } from './services/chatService';
-import { isAuthenticated, logout, getUserProfile, isAwaitingEmailConfirmation } from './services/authService';
-import { isAuthenticated, logout, getUserProfile, getCurrentUser } from './services/authService';
+import { isAuthenticated, logout, getUserProfile, getCurrentUser, isAwaitingEmailConfirmation } from './services/authService';
 import { DATA_UW, DATA_UOFT, DATA_MAC, DATA_WESTERN, DATA_QUEENS, DATA_TMU } from './services/campusData';
 import UniversitySelector from './components/UniversitySelector';
 import MessageBubble from './components/MessageBubble';
@@ -615,18 +614,12 @@ const App: React.FC = () => {
             Map
           </button>
         </div>
-      </header>
 
       <main
         className="flex-1 overflow-y-auto relative scrollbar-hide z-10"
         onClick={() => { setIsDropdownOpen(false); setIsHistoryOpen(false); }}
       >
-        <div className="max-w-3xl mx-auto px-4 py-8 pb-32">
-        <main
-          className="flex-1 overflow-y-auto relative scrollbar-hide z-10"
-          onClick={() => { setIsDropdownOpen(false); setIsHistoryOpen(false); }}
-        >
-          <div className="max-w-3xl mx-auto px-4 py-4 pb-4">
+        <div className="max-w-3xl mx-auto px-4 py-4 pb-4">
 
           {activeTab === 'chat' && (
             <>
